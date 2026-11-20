@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tidy Pro Plus for Heltec V4</title>
+<meta name="description" content="Install Tidy Pro Plus (TidyOS Pro with a pick-what-you-install flasher), a 900 MHz field computer for AMI and RF site work, on a Heltec WiFi LoRa 32 V4 from your browser. Dual boot with The Shelf.">
+<link rel="icon" href="docs/favicon-32.png">
+<script type="module" src="https://unpkg.com/esp-web-tools@10.1.1/dist/web/install-button.js?module"></script>
+<style>
+:root{--ink:#0d1b2e;--surface:#132842;--text:#eef3f9;--muted:#a9b9cc;--accent:#ffd84d;--accent-ink:#0b2442;--blue:#3d8be0;--divider:#24425f;--bad:#ff8a73;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',system-ui,sans-serif;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ink);color:var(--text);font-family:var(--sans);line-height:1.55}
+.wrap{max-width:920px;margin:0 auto;padding:32px 16px 64px}
+header{display:flex;gap:18px;align-items:center;flex-wrap:wrap}
+header img{width:96px;height:96px}
+h1{font-size:38px;margin:0;line-height:1.1;letter-spacing:-.5px}
+h1 .pro{background:var(--accent);color:var(--accent-ink);border-radius:8px;padding:0 10px;font-size:26px;vertical-align:6px;margin-left:6px}
+.lead{color:var(--muted);font-size:17px;max-width:680px;margin:8px 0 0}
+h2{font-size:24px;margin:44px 0 12px}
+h3{font-size:16px;margin:0 0 6px}
+p{margin:0 0 12px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px}
+.card{background:var(--surface);border:1px solid var(--divider);border-radius:16px;padding:18px}
+.card small{color:var(--muted);display:block;margin-top:10px;font-size:13px}
+.tag{display:inline-block;font-size:12px;font-weight:700;color:var(--accent-ink);background:var(--accent);border-radius:999px;padding:2px 9px;margin-bottom:8px}
+.tag.blue{background:var(--blue);color:#fff}
+esp-web-install-button button,.btn{font:inherit;font-weight:700;background:var(--accent);color:var(--accent-ink);border:0;border-radius:999px;padding:11px 20px;cursor:pointer;font-size:15px}
+.btn.alt{background:transparent;color:var(--accent);border:2px solid var(--accent)}
+.btn:disabled{opacity:.5;cursor:default}
+.warn{border-left:4px solid var(--accent);background:var(--surface);padding:12px 14px;border-radius:0 12px 12px 0;margin:14px 0;font-size:15px}
+.warn.red{border-left-color:var(--bad)}
+.muted{color:var(--muted);font-size:14px}
+table{width:100%;border-collapse:collapse;font-size:15px;background:var(--surface);border:1px solid var(--divider);border-radius:14px;overflow:hidden}
+th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--divider);vertical-align:top}
+th{color:var(--muted);font-weight:600;font-size:13px}
+tr:last-child td{border-bottom:0}
+code{background:var(--surface);border:1px solid var(--divider);border-radius:6px;padding:1px 6px;font-size:.92em}
+ol{padding-left:22px}ol li{margin-bottom:8px}
+a{color:var(--accent)}
+ul.ok{padding-left:20px;margin:0}ul.ok li{margin-bottom:6px}
+.fb-status{margin-top:12px;background:var(--surface);border:1px solid var(--divider);border-radius:14px;padding:14px 16px}
+.fb-bar{height:8px;border-radius:999px;background:var(--divider);overflow:hidden;margin-bottom:8px}
+.fb-bar div{height:100%;width:0;background:var(--accent);transition:width .2s}
+.oled{font:13px/1.25 ui-monospace,Menlo,Consolas,monospace;background:#000;color:#9fd7ff;border-radius:10px;padding:10px 12px;display:inline-block;white-space:pre}
+.pick{padding:20px}
+.pk-top{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;justify-content:space-between;margin-bottom:14px}
+.seg{display:inline-flex;background:var(--ink);border:1px solid var(--divider);border-radius:999px;padding:3px}
+.seg label{padding:6px 14px;border-radius:999px;cursor:pointer;font-size:14px;font-weight:600;color:var(--muted)}
+.seg input{display:none}.seg label:has(input:checked){background:var(--accent);color:var(--accent-ink)}
+.presets{font-size:14px;color:var(--muted);display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.chip{font:inherit;font-size:13px;font-weight:600;background:transparent;color:var(--text);border:1px solid var(--divider);border-radius:999px;padding:4px 12px;cursor:pointer}
+.chip:hover{border-color:var(--accent);color:var(--accent)}
+.pk-cols{display:grid;grid-template-columns:1.15fr 1fr;gap:22px}
+@media(max-width:760px){.pk-cols{grid-template-columns:1fr}}
+.pk-h{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);margin:14px 0 4px}
+.pk-h:first-child{margin-top:0}
+.row{display:grid;grid-template-columns:22px 12px 1fr auto;gap:10px;align-items:start;padding:8px 10px;border-radius:10px;cursor:pointer}
+.row:hover{background:rgba(255,255,255,.04)}
+.row.sub{margin-left:22px}
+.row input{width:18px;height:18px;margin:2px 0 0;accent-color:var(--accent);cursor:pointer}
+.row .nm{font-weight:600;font-size:15px}.row .nm small{display:block;font-weight:400;color:var(--muted);font-size:13px;line-height:1.35;margin-top:1px}
+.row .sz{font-variant-numeric:tabular-nums;color:var(--muted);font-size:13px;white-space:nowrap;padding-top:2px}
+.row.off .nm{color:var(--muted)}
+.sw{width:12px;height:12px;border-radius:3px;background:var(--c);margin-top:5px}
+:root{--c-tidy:#ffd84d;--c-shelf:#5fb3ff;--c-www:#9a8cff;--c-menu:#ff9f5a;--c-sys:#6d8299;--free:#4fd18b}
+.hatch{background:repeating-linear-gradient(45deg,#3a5675 0 3px,#203a57 3px 6px)!important}
+.pk-meter{background:var(--ink);border:1px solid var(--divider);border-radius:14px;padding:16px}
+.free-big{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap}
+.free-big span{font-size:40px;font-weight:800;color:var(--free);font-variant-numeric:tabular-nums;line-height:1}
+.free-big small{color:var(--muted);font-size:14px}
+.map{display:flex;height:34px;border-radius:8px;overflow:hidden;margin:14px 0 8px;border:1px solid var(--divider);background:var(--free)}
+.map .p{position:relative;height:100%;border-right:1px solid var(--ink);background:var(--free);transition:all .25s}
+.map .p .f{position:absolute;left:0;top:0;bottom:0;background:var(--c);transition:width .25s}
+.map .p.kept .f{width:100%!important}
+.legend{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12px;color:var(--muted)}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:2px;background:var(--c);margin-right:5px;vertical-align:-1px}
+table.mt{margin-top:14px;font-size:13px;background:transparent;border:0}
+table.mt td{padding:5px 4px;border-bottom:1px solid var(--divider)}
+table.mt td:last-child{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+table.mt tr.tot td{font-weight:700;border-bottom:0;padding-top:8px}
+.btn.big{width:100%;margin-top:14px;font-size:17px;padding:13px}
+details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var(--muted);font-size:14px}
+@media(max-width:560px){h1{font-size:30px}header img{width:72px;height:72px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <img src="docs/logo.svg" alt="TidyOS Pro logo">
+    <div>
+      <h1>Tidy<span class="pro">PRO+</span></h1>
+      <p class="lead"><b>Tidy Pro Plus</b> is TidyOS Pro with a flasher where you tick exactly what goes on the board and see the free space as you go. A pocket field computer on a Heltec V4: a 902–928 MHz spectrum sweep, AMI meter traffic counter, GPS site survey and an RF exposure estimate, plus the TidyOS desktop in any browser. It can share the board with The Shelf (dual boot).</p>
+    </div>
+  </header>
+
+  <h2>1. Back up the board first</h2>
+  <p>Installing replaces what's on the board. A backup copies the whole flash (firmware, settings, Wi-Fi, files kept on the board) to one file on this computer, and <b>Restore</b> (step 6) puts it back exactly as it was. Plug the board in with a USB <i>data</i> cable and click Back up. It takes 3–5 minutes.</p>
+  <div class="card">
+    <button class="btn" id="fbBackup">Back up board</button>
+    <small>Files on a microSD card aren't part of this; they stay on the card.</small>
+    <div class="fb-status" id="fbStatus" hidden><div class="fb-bar"><div id="fbFill"></div></div><div id="fbMsg"></div></div>
+  </div>
+
+  <h2>2. Pick what to install</h2>
+  <p>Tick the pieces you want copied onto the board. The bar shows where each one lands in the board's 16 MB of flash and how much room is left as you tick and untick. Then click <b>Install</b> and choose the board's port when Chrome asks. Chrome or Edge on a PC, Mac or Raspberry Pi. If no port shows up, hold <b>PRG</b> on the board while you plug it in.</p>
+  <div class="warn">With both systems on the board, it shows a <b>30-second boot menu</b> after every restart: a short press of PRG switches between them, holding PRG starts the one shown now, and if you do nothing it starts the one you used last. With only one, it starts that one straight away.</div>
+  <div class="card pick">
+    <div class="pk-top">
+      <div class="seg" role="radiogroup" aria-label="Board">
+        <label><input type="radio" name="board" value="v4" checked> Heltec V4</label>
+        <label><input type="radio" name="board" value="v4-r8"> V4-R8 (8 MB PSRAM)</label>
+      </div>
+      <div class="presets">Quick picks:
+        <button class="chip" data-preset="dual">Dual boot</button>
+        <button class="chip" data-preset="tidy">TidyOS Pro only</button>
+        <button class="chip" data-preset="shelf">The Shelf only</button>
+      </div>
+    </div>
+
+    <div class="pk-cols">
+      <div>
+        <h3 class="pk-h">Systems</h3>
+        <label class="row"><input type="checkbox" id="c-tidyos" checked><span class="sw" style="--c:var(--c-tidy)"></span><span class="nm">TidyOS Pro<small>The field computer: RF Sweep, Meter Traffic, Site Survey, GPS, Tidy, Neat&hellip;</small></span><span class="sz" id="s-tidyos"></span></label>
+        <label class="row"><input type="checkbox" id="c-shelf" checked><span class="sw" style="--c:var(--c-shelf)"></span><span class="nm">The Shelf<small>Home-network hub (dual-boot build)</small></span><span class="sz" id="s-shelf"></span></label>
+        <label class="row sub"><input type="checkbox" id="c-www" checked><span class="sw" style="--c:var(--c-www)"></span><span class="nm">The Shelf's web app<small id="n-www">The pages The Shelf shows in your browser</small></span><span class="sz" id="s-www"></span></label>
+
+        <h3 class="pk-h">Start-up</h3>
+        <label class="row"><input type="checkbox" id="c-boot" checked><span class="sw" style="--c:var(--c-sys)"></span><span class="nm">Bootloader + partition table<small>Needed the first time. Leave ticked unless this board already runs Tidy Pro Plus.</small></span><span class="sz" id="s-boot"></span></label>
+        <label class="row"><input type="checkbox" id="c-menu" checked><span class="sw" style="--c:var(--c-menu)"></span><span class="nm">Boot menu (TidyBoot)<small>Starts the system you pick and installs updates. Needed the first time.</small></span><span class="sz" id="s-menu"></span></label>
+
+        <h3 class="pk-h">Clean up</h3>
+        <label class="row"><input type="checkbox" id="c-clear" checked><span class="sw hatch"></span><span class="nm">Empty the slots I didn't tick<small>So an old copy isn't left behind and the boot menu doesn't offer it</small></span><span class="sz"></span></label>
+        <label class="row"><input type="checkbox" id="c-wnvs"><span class="sw" style="--c:var(--bad)"></span><span class="nm">Forget Wi-Fi and settings<small>Otherwise they're kept</small></span><span class="sz">20 KB</span></label>
+        <label class="row"><input type="checkbox" id="c-wtfs"><span class="sw" style="--c:var(--bad)"></span><span class="nm">Wipe TidyOS Pro's on-board files<small>Not the microSD card</small></span><span class="sz">1 MB</span></label>
+        <label class="row"><input type="checkbox" id="c-wfat"><span class="sw" style="--c:var(--bad)"></span><span class="nm">Wipe The Shelf's on-board files<small>Tick this the first time if the board had The Shelf on its own before</small></span><span class="sz">7.4 MB</span></label>
+      </div>
+
+      <div class="pk-meter">
+        <div class="free-big"><span id="m-free">&ndash;</span><small>free after install, of 16 MB</small></div>
+        <div class="map" id="m-map" aria-hidden="true"></div>
+        <div class="legend">
+          <span><i style="--c:var(--c-tidy)"></i>TidyOS Pro</span><span><i style="--c:var(--c-shelf)"></i>The Shelf</span><span><i style="--c:var(--c-www)"></i>Web app</span>
+          <span><i style="--c:var(--c-menu)"></i>Boot menu</span><span><i style="--c:var(--c-sys)"></i>System</span><span><i class="hatch"></i>Left as it is</span><span><i style="--c:var(--free)"></i>Free</span>
+        </div>
+        <table class="mt" id="m-table"></table>
+        <p class="muted" id="m-note" style="margin-top:10px"></p>
+        <button class="btn big" id="pkGo">Install</button>
+        <div class="fb-status" id="pkStatus" hidden><div class="fb-bar"><div id="pkFill"></div></div><div id="pkMsg"></div></div>
+      </div>
+    </div>
+  </div>
+  <details class="classic"><summary>One-click classic install buttons (no choices)</summary>
+    <div class="grid" style="margin-top:12px">
+      <div class="card"><h3>Heltec V4 &middot; dual boot</h3><esp-web-install-button manifest="manifest-pro-v4-dual.json"><button slot="activate">Install dual boot</button></esp-web-install-button><small>About 7.5 MB.</small></div>
+      <div class="card"><h3>Heltec V4 &middot; TidyOS Pro only</h3><esp-web-install-button manifest="manifest-pro-v4.json"><button slot="activate">Install TidyOS Pro</button></esp-web-install-button><small>About 3 MB.</small></div>
+      <div class="card"><h3>Heltec V4-R8</h3><esp-web-install-button manifest="manifest-pro-v4-r8-dual.json"><button slot="activate">Install dual boot (R8)</button></esp-web-install-button>
+        <p style="margin-top:10px"><esp-web-install-button manifest="manifest-pro-v4-r8.json"><button slot="activate" class="btn alt">TidyOS Pro only (R8)</button></esp-web-install-button></p></div>
+    </div>
+  </details>
+
+  <h2>3. Wire it up</h2>
+  <table>
+    <tr><th>Part</th><th>Heltec V4 pins</th><th>Notes</th></tr>
+    <tr><td>GNSS (GPS) module</td><td>The V4's GNSS header (GPIO 38&ndash;42, 34)</td><td>Found by itself at start-up (9600 or 115200 baud). Sets the clock when there's no internet.</td></tr>
+    <tr><td>microSD module</td><td>CS <b>4</b> &middot; MISO <b>6</b> &middot; CLK <b>47</b> &middot; MOSI <b>48</b> &middot; 3V3 &middot; GND</td><td>Moved off GPIO 39&ndash;42, which the GNSS module uses. 3.3 V modules only. FAT32.</td></tr>
+    <tr><td>900 MHz antenna</td><td>The LoRa antenna connector</td><td>TidyOS Pro only <b>listens</b>; it never transmits. Use a 902&ndash;928 MHz antenna and set its gain in RF Sweep (stock V4 &asymp; 2 dBi).</td></tr>
+  </table>
+  <p class="muted" style="margin-top:10px">No GPS fitted? Then a card wired for The Shelf (CS 42, MOSI 41, CLK 40, MISO 39) still works.</p>
+
+  <h2>4. Connect</h2>
+  <ol>
+    <li>Power the board. Pick <b>TidyOS Pro</b> on the boot menu (or wait).</li>
+    <li>First time: join the Wi-Fi <code>TidyOS-XXXXXX</code> (password <code>tidyos123</code>) on your phone and open <code>http://192.168.4.1</code>. The board's own screen shows the name and address. In <b>Settings</b>, join your home or work Wi-Fi.</li>
+    <li>After that open <code>http://tidyos-xxxxxx.local</code> (the address is on the desktop's bottom bar). The top bar has <b>Restart</b> (back to the boot menu) and <b>&#9790; Deep Sleep</b> (radio, GPS and screen off; press PRG to wake).</li>
+  </ol>
+  <div class="oled">Start which one?
+&#9608; TidyOS Pro      &#9608;
+  The Shelf
+PRG: switch  hold: go  27s</div>
+
+  <h2>5. The field tools</h2>
+  <div class="grid">
+    <div class="card"><h3>RF Sweep</h3><p>Live 902&ndash;928 MHz spectrum in 129 channels of 200 kHz (the Wi-SUN / FAN plan Riva and most 900 MHz AMI mesh networks use), with average, peak and peak hold, a waterfall, the noise floor and an overload warning. Saves a CSV.</p></div>
+    <div class="card"><h3>Meter Traffic</h3><p>How busy each channel is across the band, and a one-channel burst counter: bursts per minute, time on the air, burst lengths. It counts energy, so it works for OpenWay (hw 2 / 3 / 3.1 / ICM) and Riva alike. It doesn't decode anything.</p></div>
+    <div class="card"><h3>Site Survey</h3><p>Walk or drive with the GPS: every few seconds it logs position, noise floor, strongest signal and band occupancy to <code>SD:/rf/survey-*.csv</code>, draws the points as a coloured map, and exports KML for Google Earth.</p></div>
+    <div class="card"><h3>RF Exposure</h3><p>An <i>estimate</i> of power density (mW/cm&sup2;) from the band's readings, against the FCC limits, plus a calculator for "this transmitter, this far away". See below for how it's worked out.</p></div>
+    <div class="card"><h3>GPS &middot; Wi-Fi Scan &middot; Nic Sweep &middot; Ping</h3><p>GNSS fix and waypoints; 2.4 GHz networks and their channels; every device on your network; and ping with history.</p></div>
+    <div class="card"><h3>Clone</h3><p>Copy this board's firmware onto another V4 by wire: GPIO 43&rarr;RX, GPIO 44&larr;TX, GND (and optionally GPIO 3&rarr;RST, GPIO 33&rarr;PRG). Settings, Wi-Fi and files aren't copied.</p></div>
+  </div>
+  <p style="margin-top:14px">The desktop's right-hand panel shows 4-day graphs for wind and gusts, humidity, storms (CAPE, with thunderstorm hours marked) and a <b>tropospheric ducting index</b> for where you are (900 MHz carries much further than normal during ducting), plus solar flux, Kp, X-ray class, an HF band estimate, National Weather Service alerts, and the board's own 900 MHz noise floor live.</p>
+
+  <h2>How the exposure estimate works (and its limits)</h2>
+  <p>The radio measures the power reaching it, in dBm. Corrected for the front-end and any attenuator, that's the power the antenna picked up. An antenna of gain G has an effective area of G&middot;&lambda;&sup2;/4&pi; (about 135 cm&sup2; for 2 dBi at 915 MHz), so the power density that delivered it is power &divide; area. Summing every channel's time-averaged power gives the band's average, compared with the FCC limit at 915 MHz: <b>0.61 mW/cm&sup2;</b> for the general public and 3.05 mW/cm&sup2; for workers, averaged over 30 minutes (47 CFR 1.1310).</p>
+  <div class="warn red">It's an estimate, good to a few dB: the antenna's real gain, the V4's front-end gain, direction, polarisation and reflections all move it. Right next to a meter the receiver runs out of range and reads <b>low</b>; the app says <b>OVERLOAD</b> when that happens. For a number you can sign off, use a calibrated broadband RF exposure meter.</div>
+  <p class="muted">For scale: a 1 W radio sending all the time gives about 0.013 mW/cm&sup2; at 1 m (2% of the public limit). AMI radios send in short bursts, typically 1&ndash;2% of the time.</p>
+
+  <h2>6. Restore a backup</h2>
+  <p>Puts a backup from step 1 back on the board exactly as it was, whatever is on it now. Restoring a backup made before TidyOS Pro gives you the board as it was then (for example The Shelf on its own).</p>
+  <div class="card">
+    <button class="btn alt" id="fbRestore">Restore from file&hellip;</button>
+    <input type="file" id="fbFile" accept=".gz,.bin" hidden>
+    <small>Use a backup from the same kind of board. The microSD card isn't touched.</small>
+    <div class="fb-status" id="rsStatus" hidden><div class="fb-bar"><div id="rsFill"></div></div><div id="rsMsg"></div></div>
+  </div>
+
+  <h2>Updates</h2>
+  <p>TidyOS Pro: Settings &rarr; <b>Check for updates</b> (needs the microSD card: the update is saved there and the boot menu installs it). The Shelf on a dual-boot board updates from its own settings page as usual; it gets its dual-boot version from this site.</p>
+
+  <p class="muted" style="margin-top:36px">Source, build notes and wiring: <a href="https://github.com/hardwaremack-prog/Tidy-Pro-Plus">github.com/hardwaremack-prog/Tidy-Pro-Plus</a> (copied from <a href="https://github.com/CharlesPhillips3/TidyOS-Pro">TidyOS Pro</a>) &middot; Based on <a href="https://github.com/hardwaremack-prog/TidyOS-ESP32">TidyOS</a> and <a href="https://github.com/hardwaremack-prog/The-Shelf-Heltec-V4900mhzMesh">The Shelf for Heltec</a>. Built on FabGL (GPL v3), RadioLib, U8g2.</p>
+</div>
+<script type="module">
+// Whole-board flash backup and restore over USB, with esptool-js.
+const ESPTOOL = 'https://unpkg.com/esptool-js@0.5.7/bundle.js';
+const $ = id => document.getElementById(id);
+const busy = on => { $('fbBackup').disabled = $('fbRestore').disabled = $('pkGo').disabled = on; };
+let at = 'fb';      // which card shows the progress: fb = backup, rs = restore
+const show = (msg, frac) => {
+  $(at + 'Status').hidden = false; $(at + 'Msg').textContent = msg;
+  if (frac != null) $(at + 'Fill').style.width = Math.round(frac * 100) + '%';
+};
+const mb = n => n < 1048576 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
+
+if (!('serial' in navigator)) {
+  for (const id of ['fbBackup', 'fbRestore', 'pkGo']) $(id).disabled = true;
+  show('Open this page in Chrome or Edge on a computer to back up or restore over USB.');
+}
+
+async function connect() {
+  const { ESPLoader, Transport } = await import(ESPTOOL);
+  const port = await navigator.serial.requestPort();
+  const transport = new Transport(port, true);
+  const terminal = { clean() {}, writeLine() {}, write() {} };
+  const loader = new ESPLoader({ transport, baudrate: 921600, romBaudrate: 115200, terminal });
+  show('Connecting to the board…', 0);
+  const chip = await loader.main();
+  const bytes = (await loader.getFlashSize()) * 1024;
+  if (!bytes) throw new Error("Couldn't read the board's flash size.");
+  return { loader, transport, chip, bytes };
+}
+async function done(c) {
+  try { await c.loader.after('hard_reset'); } catch {}
+  try { await c.transport.disconnect(); } catch {}
+}
+function friendly(e) {
+  const m = String(e && e.message || e);
+  if (/No port selected|NotFoundError/i.test(m)) return 'No board picked.';
+  if (/open|busy|in use/i.test(m)) return 'The port is busy. Close any other page or app using the board (another tab, Arduino, a serial monitor) and try again.';
+  return m + '. Unplug the board, plug it back in, and try again. If it keeps failing, hold PRG while plugging it in.';
+}
+
+$('fbBackup').onclick = async () => {
+  at = 'fb'; let c; busy(true);
+  try {
+    c = await connect();
+    const t0 = Date.now();
+    const data = await c.loader.readFlash(0, c.bytes, (_p, got, total) => {
+      const s = (Date.now() - t0) / 1000, left = got ? s * (total - got) / got : 0;
+      show(`Reading ${mb(got)} of ${mb(total)}` + (got > 65536 ? ` · about ${Math.ceil(left / 60)} min left` : ''), got / total);
+    });
+    await done(c); c = null;
+    show('Compressing…', 1);
+    const gz = await new Response(new Blob([data]).stream().pipeThrough(new CompressionStream('gzip'))).blob();
+    const kind = data.length >= 16 * 1048576 ? 'v4' : data.length >= 8 * 1048576 ? 'v3' : 'board';
+    const name = `heltec-${kind}-flash-${new Date().toISOString().slice(0, 10)}.bin.gz`;
+    if (window.showSaveFilePicker) {
+      try {
+        const h = await showSaveFilePicker({ suggestedName: name, types: [{ description: 'Board backup', accept: { 'application/gzip': ['.gz'] } }] });
+        const w = await h.createWritable(); await w.write(gz); await w.close();
+      } catch (e) { if (e.name === 'AbortError') { show('Backup read but not saved.'); return; } throw e; }
+    } else {
+      const a = document.createElement('a'); a.href = URL.createObjectURL(gz); a.download = name; a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    }
+    show(`Saved ${name}: ${mb(data.length)} of flash in ${mb(gz.size)}. The board has restarted.`, 1);
+  } catch (e) { show(friendly(e)); }
+  finally { if (c) await done(c); busy(false); }
+};
+
+$('fbRestore').onclick = () => { at = 'rs'; $('fbFile').click(); };
+$('fbFile').onchange = async () => {
+  const f = $('fbFile').files[0]; $('fbFile').value = '';
+  if (!f) return;
+  let c; busy(true);
+  try {
+    show('Opening ' + f.name + '…', 0);
+    let data = new Uint8Array(await f.arrayBuffer());
+    if (data[0] === 0x1f && data[1] === 0x8b) data = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
+    if (data.length < 1048576 || data.length % 4096) throw new Error("That file isn't a whole-board backup");
+    if (!confirmRestore(f.name, data.length)) { show('Restore cancelled.'); return; }
+    c = await connect();
+    if (data.length > c.bytes) throw new Error(`That backup is ${mb(data.length)} but this board's flash is ${mb(c.bytes)}. Use a backup from the same kind of board`);
+    let bin = '';
+    for (let i = 0; i < data.length; i += 0x8000) bin += String.fromCharCode.apply(null, data.subarray(i, i + 0x8000));
+    const t0 = Date.now();
+    await c.loader.writeFlash({
+      fileArray: [{ data: bin, address: 0 }],
+      flashSize: 'keep', flashMode: 'keep', flashFreq: 'keep',
+      eraseAll: false, compress: true,
+      reportProgress: (_i, w, total) => {
+        const s = (Date.now() - t0) / 1000, left = w ? s * (total - w) / w : 0;
+        show(`Writing ${Math.round(w / total * 100)}%` + (w > 65536 ? ` · about ${Math.ceil(left / 60)} min left` : ''), w / total);
+      },
+    });
+    await done(c); c = null;
+    show(`Restored ${f.name}. The board has restarted.`, 1);
+  } catch (e) { show(friendly(e)); }
+  finally { if (c) await done(c); busy(false); }
+};
+// ---------- Tidy Pro Plus: pick what to install, see the free space, write just those pieces ----------
+const FLASH = 16 * 1048576;
+const L = {   // the flash layout (source/TidyOSPro/partitions.csv)
+  sys:    { at: 0x0,      size: 0x10000 },   // bootloader, partition table, Wi-Fi/settings, boot selection
+  menu:   { at: 0x10000,  size: 0x70000 },
+  tidyos: { at: 0x80000,  size: 0x300000 },
+  shelf:  { at: 0x380000, size: 0x200000 },
+  www:    { at: 0x580000, size: 0x200000 },
+  tidyfs: { at: 0x780000, size: 0x100000 },
+  ffat:   { at: 0x880000, size: 0x770000 },
+  core:   { at: 0xFF0000, size: 0x10000 },
+};
+const COLOR = { sys: '--c-sys', menu: '--c-menu', tidyos: '--c-tidy', shelf: '--c-shelf', www: '--c-www', core: '--c-sys' };
+const NAME = { menu: 'Boot menu', tidyos: 'TidyOS Pro', shelf: 'The Shelf', www: "The Shelf's web app", tidyfs: "TidyOS Pro's file storage", ffat: "The Shelf's file storage" };
+let PARTS = null;
+const board = () => document.querySelector('input[name=board]:checked').value;
+const on = id => $('c-' + id).checked;
+const sz = n => n >= 1048576 ? (n / 1048576).toFixed(n >= 10 * 1048576 ? 1 : 2).replace(/\.?0+$/, '') + ' MB' : Math.round(n / 1024) + ' KB';
+
+// Works out what will be on the board, what gets written, and what's free.
+function plan() {
+  const P = PARTS.boards[board()], clear = on('clear');
+  const st = {}, writes = [];
+  for (const k of ['menu', 'tidyos', 'shelf', 'www']) {
+    if (on(k)) st[k] = 'install';
+    else if (k === 'menu') st[k] = 'kept';
+    else if (k === 'www') st[k] = (clear && !on('shelf')) ? 'empty' : 'kept';
+    else st[k] = clear ? 'empty' : 'kept';
+  }
+  const has = k => st[k] !== 'empty';            // something will (or may) be there
+  if (on('boot')) writes.push({ what: 'Bootloader + partition table', at: 0, file: P.boot.path, size: P.boot.size });
+  if (on('wnvs')) writes.push({ what: 'Forget Wi-Fi and settings', at: 0x9000, fill: 0x5000 });
+  if (on('menu') || on('tidyos') || on('shelf')) writes.push({ what: 'Start at the boot menu', at: 0xE000, fill: 0x2000 });
+  for (const k of ['menu', 'tidyos', 'shelf', 'www']) {
+    if (st[k] === 'install') writes.push({ what: NAME[k], at: P[k].offset, file: P[k].path, size: P[k].size });
+    else if (st[k] === 'empty' && clear) writes.push({ what: 'Empty ' + NAME[k] + ' slot', at: L[k].at, fill: k === 'www' ? 0x2000 : 0x1000 });
+  }
+  if (on('wtfs')) writes.push({ what: "Wipe TidyOS Pro's on-board files", at: L.tidyfs.at, fill: L.tidyfs.size });
+  if (on('wfat')) writes.push({ what: "Wipe The Shelf's on-board files", at: L.ffat.at, fill: L.ffat.size });
+  writes.sort((a, b) => a.at - b.at);
+
+  // space
+  let programs = 0, kept = 0, spare = 0, empty = 0, files = 0;
+  const fill = {};
+  for (const k of ['menu', 'tidyos', 'shelf', 'www']) {
+    if (st[k] === 'install') { programs += P[k].size; spare += L[k].size - P[k].size; fill[k] = P[k].size / L[k].size; }
+    else if (st[k] === 'kept') { kept += L[k].size; fill[k] = 1; }
+    else { empty += L[k].size; fill[k] = 0; }
+  }
+  const tidyThere = has('tidyos'), shelfThere = has('shelf');
+  const fsUse = { tidyfs: tidyThere, ffat: shelfThere };
+  for (const k of ['tidyfs', 'ffat']) { if (fsUse[k]) files += L[k].size; else empty += L[k].size; }
+  const system = L.sys.size + L.core.size;
+  const free = FLASH - system - programs - kept;
+  return { P, st, writes, programs, kept, spare, empty, files, system, free, fill, fsUse, tidyThere, shelfThere };
+}
+
+function draw() {
+  if (!PARTS) return;
+  const P = PARTS.boards[board()];
+  for (const k of ['boot', 'menu', 'tidyos', 'shelf', 'www']) $('s-' + k).textContent = sz(P[k].size);
+  for (const id of ['tidyos', 'shelf', 'www', 'boot', 'menu']) $('c-' + id).closest('.row').classList.toggle('off', !on(id));
+  $('n-www').textContent = on('shelf') && !on('www') ? "Unticked: the web app already on the board is kept" : "The pages The Shelf shows in your browser";
+  const r = plan();
+
+  // the flash map, in flash order
+  const map = $('m-map'); map.innerHTML = '';
+  const seg = (k, title, color, frac, kept, pattern) => {
+    const d = document.createElement('div'); d.className = 'p' + (kept ? ' kept' : '');
+    d.style.width = (L[k].size / FLASH * 100) + '%'; d.title = title;
+    if (pattern) d.style.background = 'repeating-linear-gradient(90deg,var(--free) 0 6px,#3fb877 6px 8px)';
+    const f = document.createElement('div'); f.className = 'f' + (kept ? ' hatch' : '');
+    f.style.setProperty('--c', `var(${color})`); f.style.width = (frac * 100) + '%';
+    d.appendChild(f); map.appendChild(d);
+  };
+  seg('sys', 'System: bootloader, partition table, settings (64 KB)', '--c-sys', 1);
+  for (const k of ['menu', 'tidyos', 'shelf', 'www']) {
+    const t = r.st[k] === 'install' ? `${NAME[k]}: ${sz(r.P[k].size)} of a ${sz(L[k].size)} slot` : r.st[k] === 'kept' ? `${NAME[k]} slot: left as it is` : `${NAME[k]} slot: empty`;
+    seg(k, t, COLOR[k], r.fill[k], r.st[k] === 'kept');
+  }
+  seg('tidyfs', r.fsUse.tidyfs ? `TidyOS Pro's file storage: ${sz(L.tidyfs.size)}` : 'Unused', '--free', 0, false, r.fsUse.tidyfs);
+  seg('ffat', r.fsUse.ffat ? `The Shelf's file storage: ${sz(L.ffat.size)}` : 'Unused', '--free', 0, false, r.fsUse.ffat);
+  seg('core', 'Crash log (64 KB)', '--c-sys', 1);
+
+  $('m-free').textContent = sz(r.free);
+  const fsBits = [r.fsUse.tidyfs && "TidyOS Pro 1 MB", r.fsUse.ffat && "The Shelf 7.4 MB"].filter(Boolean).join(', ');
+  const copy = r.writes.reduce((n, w) => n + (w.size || 0), 0);
+  const rows = [
+    ['Programs being copied', sz(r.programs)],
+    ['System (start-up files, settings, crash log)', sz(r.system)],
+    r.kept ? ['Left as it is (whatever is there now)', sz(r.kept)] : null,
+    ['Free: room for files' + (fsBits ? ` (${fsBits})` : ''), sz(r.files)],
+    ['Free: spare room for program updates', sz(r.spare)],
+    r.empty ? ['Free: empty, nothing uses it', sz(r.empty)] : null,
+  ].filter(Boolean);
+  $('m-table').innerHTML = rows.map(([a, b]) => `<tr><td>${a}</td><td>${b}</td></tr>`).join('') +
+    `<tr class="tot"><td>To download and write</td><td>${sz(copy)}</td></tr>`;
+
+  const notes = [];
+  if (!r.tidyThere && !r.shelfThere) notes.push('⚠ Neither system will be on the board: the boot menu will say "No system installed".');
+  if (!on('boot')) notes.push('⚠ Bootloader unticked: only do this if the board already has Tidy Pro Plus / TidyOS Pro on it.');
+  if (!on('menu')) notes.push('⚠ Boot menu unticked: the one already on the board is used. A new board needs it.');
+  if (on('shelf') && !on('www')) notes.push('The Shelf needs its web app. Untick it only if the board already has one.');
+  if (r.files && !on('wtfs') && r.fsUse.tidyfs || r.files && !on('wfat') && r.fsUse.ffat) notes.push('Files already kept on the board stay, and use some of the room for files.');
+  if (!r.writes.some(w => w.file || w.fill > 0x2000)) notes.push('Nothing to install yet: tick something.');
+  $('m-note').innerHTML = notes.join('<br>');
+  $('pkGo').textContent = r.writes.length ? `Install (${sz(copy)})` : 'Install';
+}
+
+document.querySelectorAll('.pick input').forEach(i => i.addEventListener('change', e => {
+  if (e.target.id === 'c-shelf') $('c-www').checked = e.target.checked;   // they go together, but the web app can be unticked on its own
+  draw();
+}));
+document.querySelectorAll('.chip').forEach(b => b.onclick = () => {
+  const p = b.dataset.preset;
+  $('c-tidyos').checked = p !== 'shelf';
+  $('c-shelf').checked = $('c-www').checked = p !== 'tidy';
+  $('c-boot').checked = $('c-menu').checked = $('c-clear').checked = true;
+  draw();
+});
+fetch('parts.json').then(r => r.json()).then(j => { PARTS = j; draw(); })
+  .catch(() => { $('m-note').textContent = "Couldn't load parts.json, so the picker can't work. Use the classic buttons below."; $('pkGo').disabled = true; });
+
+$('pkGo').onclick = async () => {
+  const r = plan();
+  if (!r.writes.length) return;
+  const list = r.writes.map(w => '• ' + w.what + (w.size ? ` (${sz(w.size)})` : w.fill >= 0x100000 ? ` (${sz(w.fill)})` : '')).join('\n');
+  if (!confirm(`Write these to the board?\n\n${list}\n\nAbout ${sz(r.free)} will be free afterwards. Back up first (step 1) if you might want the board as it is now.`)) return;
+  at = 'pk'; let c; busy(true);
+  try {
+    show('Downloading…', 0);
+    const fileArray = [];
+    for (const w of r.writes) {
+      let bin;
+      if (w.file) {
+        const res = await fetch(w.file); if (!res.ok) throw new Error(`Couldn't download ${w.file}`);
+        const data = new Uint8Array(await res.arrayBuffer());
+        if (data.length !== w.size) throw new Error(`${w.file} isn't the expected size`);
+        bin = ''; for (let i = 0; i < data.length; i += 0x8000) bin += String.fromCharCode.apply(null, data.subarray(i, i + 0x8000));
+      } else bin = '\xff'.repeat(w.fill);
+      fileArray.push({ data: bin, address: w.at });
+    }
+    c = await connect();
+    if (c.bytes < FLASH) throw new Error(`This board has ${sz(c.bytes)} of flash, but Tidy Pro Plus needs a 16 MB Heltec V4`);
+    const lens = fileArray.map(f => f.data.length), total = lens.reduce((a, b) => a + b, 0);
+    const before = i => lens.slice(0, i).reduce((a, b) => a + b, 0);
+    const t0 = Date.now();
+    await c.loader.writeFlash({
+      fileArray, flashSize: 'keep', flashMode: 'keep', flashFreq: 'keep', eraseAll: false, compress: true,
+      reportProgress: (i, w, t) => {
+        const done = before(i) + (t ? w / t * lens[i] : 0), s = (Date.now() - t0) / 1000;
+        const left = done > 65536 ? Math.ceil(s * (total - done) / done / 60) : 0;
+        show(`Writing ${r.writes[i].what} · ${Math.round(done / total * 100)}%` + (left ? ` · about ${left} min left` : ''), done / total);
+      },
+    });
+    await done(c); c = null;
+    show(`Done. The board has restarted with about ${sz(r.free)} free.` + (r.tidyThere && r.shelfThere ? ' Its screen shows the boot menu.' : ''), 1);
+  } catch (e) { show(friendly(e)); }
+  finally { if (c) await done(c); busy(false); }
+};
+function confirmRestore(name, n) {
+  return window.confirm(`Restore ${name} (${mb(n)})?\n\nThis replaces everything on the board's flash: firmware (TidyOS Pro, The Shelf, boot menu), Wi-Fi, settings and on-board files. The microSD card isn't touched.`);
+}
+</script>
+</body>
+</html>
