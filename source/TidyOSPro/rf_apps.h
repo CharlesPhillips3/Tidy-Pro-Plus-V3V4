@@ -52,6 +52,16 @@ static std::string rfDir()
   return d;
 }
 
+// after an app saves a CSV: say so in its title bar ("Wi-Fi Scan - saved wifi-20261121-153000.csv"),
+// so it's clear a file was made and what it's called (it stays until the next one)
+static void rfSavedNote(uiFrame * f, const char * app, const std::string & path, const char * verb = "saved")
+{
+  size_t sl = path.rfind('/');
+  std::string t = std::string(app) + "  -  " + verb + " " + (sl == std::string::npos ? path : path.substr(sl + 1));
+  f->setTitle(t.c_str());
+  f->repaint();
+}
+
 static bool rfNeedRadio(const char * app)
 {
   if (rf::radioOk()) return true;
@@ -246,6 +256,7 @@ public:
       s += "\n";
     }
     bool ok = writeFileStr(path.c_str(), s);
+    if (ok) rfSavedNote(this, "RF Sweep", path);
     gApp->messageBox("RF Sweep", ok ? ("Saved " + path + " (opens in Tidy)").c_str() : "Couldn't save the file.", "OK", nullptr, nullptr, ok ? uiMessageBoxIcon::Info : uiMessageBoxIcon::Warning);
   }
   void refresh(bool force) {
@@ -500,6 +511,7 @@ public:
       }
     }
     bool ok = writeFileStr(path.c_str(), s);
+    if (ok) rfSavedNote(this, "Meter Traffic", path);
     gApp->messageBox("Meter Traffic", ok ? ("Saved " + path).c_str() : "Couldn't save the file.", "OK", nullptr, nullptr, ok ? uiMessageBoxIcon::Info : uiMessageBoxIcon::Warning);
   }
 };
@@ -646,7 +658,8 @@ public:
     if (rf::mode() != rf::Mode::Sweep) rf::setMode(rf::Mode::Sweep);
     int ev = atoi(everyEd->text()); s_svyEvery = ev < 1 ? 1 : ev > 600 ? 600 : ev;
     s_svyFile = rfDir() + "/survey-" + rfStamp() + ".csv";
-    writeFileStr(s_svyFile.c_str(), "time,gps_fix,lat,lon,sats,noise_floor_dbm,peak_dbm,busy_pct,band_mw_per_cm2,note\n");
+    if (writeFileStr(s_svyFile.c_str(), "time,gps_fix,lat,lon,sats,noise_floor_dbm,peak_dbm,busy_pct,band_mw_per_cm2,note\n"))
+      rfSavedNote(this, "Site Survey", s_svyFile, "logging to");
     s_svy->clear(); s_svyMarks = 0;
     s_svyOn = true; s_svyLast = 0;
     if (!rf::gGnss.present) gApp->messageBox("Site Survey", "No GPS module was found, so points are logged without a position.", "OK", nullptr, nullptr, uiMessageBoxIcon::Info);
@@ -703,6 +716,7 @@ public:
       }
       o.put("</Document></kml>\n");
     });
+    if (ok) rfSavedNote(this, "Site Survey", path);
     gApp->messageBox("Site Survey", ok ? ("Saved " + path).c_str() : "Couldn't save the KML file.", "OK", nullptr, nullptr, ok ? uiMessageBoxIcon::Info : uiMessageBoxIcon::Warning);
   }
   bool canClose() override {
@@ -865,6 +879,7 @@ public:
       struct tm tmv; time_t tt = time(nullptr); localtime_r(&tt, &tmv); char ts[24]; strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", &tmv);
       fprintf(f, "%s,%.7f,%.7f,%.1f,%d,%.1f\n", ts, g.lat, g.lon, g.altM, g.sats, g.hdop);
       fclose(f);
+      rfSavedNote(this, "GPS", path, "waypoint added to");
     }
     gApp->messageBox("GPS", f ? ("Added to " + path).c_str() : "Couldn't save.", "OK", nullptr, nullptr, uiMessageBoxIcon::Info);
   }
@@ -960,6 +975,7 @@ public:
       gApp->messageBox("Wi-Fi Scan", "Couldn't save the file (is the storage full?).", "OK", nullptr, nullptr, uiMessageBoxIcon::Warning);
       return;
     }
+    rfSavedNote(this, "Wi-Fi Scan", path);
     openTidy(path.c_str());
   }
 };

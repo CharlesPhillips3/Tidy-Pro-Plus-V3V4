@@ -26,7 +26,11 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.2.3. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.2.4. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.2.4
+- When an app saves a file, its **title bar says so**, e.g. "Wi-Fi Scan  -  saved wifi-20261121-153000.csv":
+  RF Sweep, Meter Traffic, Site Survey (CSV log and KML), GPS waypoints, Wi-Fi Scan and Nic Sweep.
 
 ### 3.2.3
 - **Updating crashed** (it restarted, crashed and restarted): the update ran in Arduino's loop task, whose 8 KB stack

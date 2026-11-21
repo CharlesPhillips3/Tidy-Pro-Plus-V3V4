@@ -227,6 +227,7 @@ public:
       });
     }
     if (!ok) { gApp->messageBox("Nic Sweep", "Couldn't save the file.", "OK", nullptr, nullptr, uiMessageBoxIcon::Error); return; }
+    { std::string t = "Nic Sweep  -  saved " + baseName(path); setTitle(t.c_str()); repaint(); }   // say so in the title bar
     if (excel) {
       char m[120]; snprintf(m, sizeof(m), "Saved %.60s in Documents.", baseName(path).c_str());
       status->setText(m); status->repaint();
