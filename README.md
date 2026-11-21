@@ -26,7 +26,13 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.2.4. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.2.5. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.2.5
+- Settings → Check for updates says the V4 needs no SD card (the old message was from the classic ESP32).
+- Bottom bar logo: a snug box, with PRO right after "TidyOS" and its blue badge just around the letters.
+- Web flasher: the big number is now **room for your files**, split by who can use it (TidyOS Pro 1 MB, The Shelf
+  7.4 MB), instead of every unused part of the 16 MB, much of which can't hold files.
 
 ### 3.2.4
 - When an app saves a file, its **title bar says so**, e.g. "Wi-Fi Scan  -  saved wifi-20261121-153000.csv":

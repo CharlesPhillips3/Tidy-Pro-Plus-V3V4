@@ -156,7 +156,8 @@ details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var
       </div>
 
       <div class="pk-meter">
-        <div class="free-big"><span id="m-free">&ndash;</span><small>free after install, of 16 MB</small></div>
+        <div class="free-big"><span id="m-free">&ndash;</span><small id="m-freeLab">room for your files</small></div>
+        <div class="muted" id="m-freeSplit" style="margin-top:4px"></div>
         <div class="map" id="m-map" aria-hidden="true"></div>
         <div class="legend">
           <span><i style="--c:var(--c-tidy)"></i>TidyOS Pro</span><span><i style="--c:var(--c-shelf)"></i>The Shelf</span><span><i style="--c:var(--c-www)"></i>Web app</span>
@@ -536,7 +537,12 @@ function draw() {
   seg('ffat', r.fsUse.ffat ? `The Shelf's file storage: ${sz(L.ffat.size)}` : 'Unused', '--free', 0, false, r.fsUse.ffat);
   seg('core', 'Crash log (64 KB)', '--c-sys', 1);
 
-  $('m-free').textContent = sz(r.free);
+  // the big number: room for files, and who can use it (what's left in the program slots can't hold files)
+  const T = r.fsUse.tidyfs ? L.tidyfs.size : 0, S = r.fsUse.ffat ? L.ffat.size : 0;
+  $('m-free').textContent = sz(T + S);
+  $('m-freeLab').textContent = T || S ? 'room for your files' : 'no system to keep files';
+  $('m-freeSplit').innerHTML = [T && `TidyOS Pro: <b>${sz(T)}</b> for its files (the SD card adds more)`, S && `The Shelf: <b>${sz(S)}</b> for its files`].filter(Boolean).join('<br>') +
+    `<br>Unused flash in all: ${sz(r.free)} of 16 MB (some is spare room in the program slots for updates).`;
   const fsBits = [r.fsUse.tidyfs && "TidyOS Pro 1 MB", r.fsUse.ffat && "The Shelf 7.4 MB"].filter(Boolean).join(', ');
   const copy = r.writes.reduce((n, w) => n + (w.size || 0), 0);
   const rows = [
@@ -583,7 +589,7 @@ $('pkGo').onclick = async () => {
   at = 'pk';
   let port;
   try { port = await pickPort(); } catch (e) { show(friendly(e)); return; }
-  if (!confirm(`Write these to the board?\n\n${list}${appsLine}\n\nAbout ${sz(r.free)} will be free afterwards. Back up first (step 1) if you might want the board as it is now.`)) return;
+  if (!confirm(`Write these to the board?\n\n${list}${appsLine}\n\nRoom for files afterwards: ${[r.fsUse.tidyfs && 'TidyOS Pro ' + sz(L.tidyfs.size), r.fsUse.ffat && 'The Shelf ' + sz(L.ffat.size)].filter(Boolean).join(', ') || 'none'}. Back up first (step 1) if you might want the board as it is now.`)) return;
   let c; busy(true);
   try {
     show('Downloading…', 0);
@@ -613,7 +619,7 @@ $('pkGo').onclick = async () => {
       },
     });
     await done(c); c = null;
-    show(`Done. The board has restarted with about ${sz(r.free)} free.` + (r.tidyThere && r.shelfThere ? ' Its screen shows the boot menu.' : ''), 1);
+    show('Done. The board has restarted.' + (r.tidyThere && r.shelfThere ? ' Its screen shows the boot menu.' : ''), 1);
   } catch (e) { show(friendly(e)); }
   finally { if (c) await done(c); busy(false); }
 };

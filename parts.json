@@ -16,16 +16,16 @@
       "tidyos": {
         "path": "firmware/tidyos-pro-v4.bin",
         "offset": 524288,
-        "size": 2741856,
+        "size": 2741936,
         "slot": 3145728,
-        "appList": 1385436
+        "appList": 1385516
       },
       "tidyosFull": {
         "path": "firmware/tidyos-pro-v4-full.bin",
         "offset": 524288,
-        "size": 3028400,
+        "size": 3028480,
         "slot": 3145728,
-        "appList": 1562092
+        "appList": 1562172
       },
       "shelf": {
         "path": "firmware/parts/v4/shelf.bin",
@@ -55,16 +55,16 @@
       "tidyos": {
         "path": "firmware/tidyos-pro-v4-r8.bin",
         "offset": 524288,
-        "size": 2742208,
+        "size": 2742288,
         "slot": 3145728,
-        "appList": 1385300
+        "appList": 1385380
       },
       "tidyosFull": {
         "path": "firmware/tidyos-pro-v4-r8-full.bin",
         "offset": 524288,
-        "size": 3028704,
+        "size": 3028800,
         "slot": 3145728,
-        "appList": 1561956
+        "appList": 1562036
       },
       "shelf": {
         "path": "firmware/parts/v4-r8/shelf.bin",

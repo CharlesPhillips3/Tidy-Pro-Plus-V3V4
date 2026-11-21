@@ -1833,7 +1833,13 @@ public:
         gApp->messageBox("Updates", "Install once from the web flasher to enable this.", "OK", nullptr, nullptr, uiMessageBoxIcon::Info);
         return;
       }
-      if (gApp->messageBox("Updates", "Restart and check GitHub? Needs Wi-Fi and the SD card.", "Check", "Cancel", nullptr, uiMessageBoxIcon::Question) == uiMessageBoxResult::Button1) {
+      if (gApp->messageBox("Updates", 
+#ifdef TIDYOS_V4
+        "Restart and check GitHub for a newer TidyOS Pro? Needs Wi-Fi. No SD card needed: without one, the update goes in the board's own storage."
+#else
+        "Restart and check GitHub? Needs Wi-Fi and the SD card."
+#endif
+        , "Check", "Cancel", nullptr, uiMessageBoxIcon::Question) == uiMessageBoxResult::Button1) {
         saveAll();
         updateRequest();
       }

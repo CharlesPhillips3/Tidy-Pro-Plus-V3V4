@@ -979,21 +979,23 @@ private:
       {                                                   // the logo: "TidyOS" and a blue PRO badge in a rounded box
         const fabgl::FontInfo * fT = &FONT_std_14, * fP = &FONT_std_12;
         int wT = cv->textExtent(fT, "TidyOS"), wP = cv->textExtent(fP, "PRO");
-        int x0 = x, y0 = by + 2, y1 = SCREEN_H - 3, x1 = x0 + 6 + wT + 5 + wP + 8 + 4;
+        // a snug box: 3 px each side; PRO right after "TidyOS", its blue badge just around the letters
+        int x0 = x, y0 = by + 2, y1 = SCREEN_H - 3;
+        int tx = x0 + 4, px1 = tx + wT + 2, px2 = px1 + wP + 3, x1 = px2 + 3;
         cv->setPenColor(T.text);
         cv->drawLine(x0 + 2, y0, x1 - 2, y0); cv->drawLine(x0 + 2, y1, x1 - 2, y1);
         cv->drawLine(x0, y0 + 2, x0, y1 - 2); cv->drawLine(x1, y0 + 2, x1, y1 - 2);
         cv->setPixel(x0 + 1, y0 + 1); cv->setPixel(x1 - 1, y0 + 1); cv->setPixel(x0 + 1, y1 - 1); cv->setPixel(x1 - 1, y1 - 1);
-        cv->drawText(fT, x0 + 6, ty(fT), "TidyOS");
-        int px1 = x0 + 6 + wT + 5, px2 = px1 + wP + 7, py1 = y0 + 3, py2 = y1 - 3;
+        cv->drawText(fT, tx, ty(fT), "TidyOS");
+        int py1 = y0 + 3, py2 = y1 - 3;
         cv->setBrushColor(T.accent);
         cv->fillRectangle(px1, py1, px2, py2);
         cv->setPenColor(T.face);                          // round the badge's corners
         cv->setPixel(px1, py1); cv->setPixel(px2, py1); cv->setPixel(px1, py2); cv->setPixel(px2, py2);
         cv->setPenColor(T.accentText);
-        cv->drawText(fP, px1 + 4, py1 + (py2 - py1 + 1 - (int)fP->height) / 2, "PRO");
+        cv->drawText(fP, px1 + 2, py1 + (py2 - py1 + 1 - (int)fP->height) / 2, "PRO");
         cv->setPenColor(T.text); cv->setBrushColor(T.face);
-        x = x1 + 10;
+        x = x1 + 8;
       }
       cv->drawText(&FONT_std_12, x, ty(&FONT_std_12), "v" TIDYOS_VERSION);
       x += cv->textExtent(&FONT_std_12, "v" TIDYOS_VERSION) + 8;
