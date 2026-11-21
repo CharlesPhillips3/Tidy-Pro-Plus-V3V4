@@ -184,15 +184,17 @@ static void pageSun()
   if (s_d.hfOk) {                                          // the six bands; Good ones in reverse
     static const char * BAND[6] = { "160", "80", "40", "20", "15", "10" };
     for (int i = 0; i < 6; ++i) {
-      int x = (i % 3) * 43, y = 29 + (i / 3) * 10;
+      int x = (i % 3) * 43, y = 28 + (i / 3) * 9;
       snprintf(b, sizeof(b), "%s %s", BAND[i], s_d.hf[i]);
       bool good = !strcmp(s_d.hf[i], "Good");
-      if (good) { s_oled.drawBox(x, y - 8, 42, 10); s_oled.setDrawColor(0); }
+      if (good) { s_oled.drawBox(x, y - 7, 42, 9); s_oled.setDrawColor(0); }
       fit(x + 1, y, b);
       s_oled.setDrawColor(1);
     }
   } else { s_oled.setFont(u8g2_font_6x12_tr); centre("HF: waiting for data", 36); s_oled.setFont(u8g2_font_5x8_tr); }
-  // Kp over 4 days, with a dotted storm line at 5
+  // Kp over 4 days, with a dotted storm line at 5, and what it is
+  s_oled.setFont(u8g2_font_4x6_tr);
+  s_oled.drawStr(0, 45, "Kp last 4 days, dots = storm");
   graph(s_d.kp, 0, 47, 128, 17, 0, 90, true);
   for (int k = 1; k < 127; k += 3) s_oled.drawPixel(k, 47 + 17 - 2 - 50 * 14 / 90);
 }

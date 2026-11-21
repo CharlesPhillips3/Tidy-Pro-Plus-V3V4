@@ -26,7 +26,10 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.3.0. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.3.1. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.3.1
+- OLED Sun + HF page: the Kp graph has a label ("Kp last 4 days, dots = storm").
 
 ### 3.3.0
 - **One storage area, 7.4 MB instead of 1 MB.** With no SD card, TidyOS Pro now keeps its files in the board's big
