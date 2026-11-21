@@ -3,6 +3,7 @@
 #include <esp_partition.h>
 // TidyOS core: display start-up, theme, settings, storage, desktop, main app
 #include <Preferences.h>
+#include <FFat.h>
 #include <sys/stat.h>
 #include <dirent.h>
 #include <time.h>
@@ -861,7 +862,11 @@ private:
     std::string notice = msgLastNotice();
     if (!notice.empty()) snprintf(b, sizeof(b), "%s", notice.substr(0, 40).c_str());
 #ifdef TIDYOS_HTML5
-    else snprintf(b, sizeof(b), "RAM %uK", (unsigned)(ramFree() / 1024));     // (you're looking at it in the browser)
+    else {                                                                    // (you're looking at it in the browser)
+      size_t ps = heap_caps_get_free_size(MALLOC_CAP_SPIRAM), in = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
+      if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM)) snprintf(b, sizeof(b), "RAM %uK + PSRAM %u.%uM free", (unsigned)(in / 1024), (unsigned)(ps / 1048576), (unsigned)(ps % 1048576 * 10 / 1048576));
+      else snprintf(b, sizeof(b), "RAM %uK", (unsigned)(ramFree() / 1024));
+    }
 #else
     else snprintf(b, sizeof(b), "Keyboard: %s  Mouse: %s   RAM %uK", inputKeyboards() ? "on" : "--", inputMice() ? "on" : "--", (unsigned)(ramFree() / 1024));
 #endif
@@ -1611,11 +1616,33 @@ static void checkUpdateNote()
       if (n.length()) {
         p.remove("note");
         Serial.printf("[TidyOS] update installer said: %s\n", n.c_str());
-        if (n != "no update waiting") s_bootNote = std::string("The update wasn't installed: ") + n.substring(0, 70).c_str();
+        if (n == "update installed") s_bootNote = "TidyOS was updated to " TIDYOS_VERSION ".";
+        else if (n != "no update waiting") s_bootNote = std::string("The update wasn't installed: ") + n.substring(0, 70).c_str();
       }
       p.end();
     }
   }
+#ifdef TIDYOS_V4
+  {                                              // an update downloaded to the board's own storage (no SD card)
+    Preferences p;
+    if (p.begin("tidyupd", false) && p.getBool("inffat", false)) {
+      p.remove("inffat");
+      if (FFat.begin(false, "/ffat", 2, "ffat")) {
+        if (FFat.exists("/tidyos/update.bin")) {          // still there: the boot menu didn't install it
+          std::string ver;
+          readFileStr("/ffat/tidyos/update.ver", ver, 40);
+          while (!ver.empty() && (ver.back() == '\n' || ver.back() == ' ')) ver.pop_back();
+          if (ver != TIDYOS_VERSION && s_bootNote.empty())
+            s_bootNote = "An update was downloaded but the boot menu didn't install it. Install the boot menu from the web flasher once, then try again.";
+          FFat.remove("/tidyos/update.bin");
+        }
+        FFat.remove("/tidyos/update.sha"); FFat.remove("/tidyos/update.ver");
+        FFat.end();
+      }
+    }
+    p.end();
+  }
+#endif
   if (!gSDMounted) return;
   std::string l;
   if (readFileStr(SD_MOUNT "/tidyos/update.log", l, 200)) {
@@ -1681,7 +1708,7 @@ void setup()
   Serial.println("\n[TidyOS Pro] " TIDYOS_VERSION " (Heltec V4) starting");
 #ifdef TIDYOS_V4
   // dual boot: the next restart goes back to the boot menu (TidyBoot), which starts the last
-  // choice after its 30 s countdown. Without a boot menu this does nothing.
+  // choice after its 10 s countdown. Without a boot menu this does nothing.
   if (const esp_partition_t * menu = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_FACTORY, "menu"))
     esp_ota_set_boot_partition(menu);
 #endif

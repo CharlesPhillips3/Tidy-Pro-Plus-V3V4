@@ -6,6 +6,8 @@
 //     which leaves plenty of RAM for HTTPS.
 //  2. Update mode reads the web flasher's manifest on GitHub Pages; if it lists a newer
 //     version, it downloads the app to the SD card (/tidyos/update.bin), checking SHA-256.
+//     No card (Tidy Pro Plus, Heltec V4): it goes in the board's own 7.4 MB storage instead
+//     (the "ffat" area The Shelf uses, /ffat/tidyos/update.bin), which the boot menu also reads.
 //  3. It restarts into the loader (a small separate program in its own flash slot), which
 //     checks the file again, writes it over the app and starts the new TidyOS.
 #include <Arduino.h>
@@ -14,6 +16,7 @@
 #include <Preferences.h>
 #include <esp_ota_ops.h>
 #include <sys/stat.h>
+#include <FFat.h>
 #include "mbedtls/sha256.h"
 #include "config.h"
 #include "core.h"
@@ -342,10 +345,34 @@ void updateRun(void (*status)(const char * msg, int percent))
 
   snprintf(b, sizeof(b), "New version %s - getting the SD card ready...", ver.c_str());
   status(b, 15);
-  if (!sdMountForUpdate()) finish(status, "Updating needs the SD card - please put it in", 0, 7000);
-  mkdir(SD_MOUNT "/tidyos", 0777);
-  FILE * f = fopen(SD_MOUNT "/tidyos/update.bin", "wb");
-  if (!f) finish(status, "Can't write to the SD card", 0, 6000);
+  // where the download goes: the SD card if there is one, otherwise the board's own storage
+  std::string dir = SD_MOUNT "/tidyos";
+  bool onCard = sdMountForUpdate();
+#ifdef TIDYOS_V4
+  if (!onCard) {
+    status("No SD card - using the board's own storage...", 15);
+    bool ok = FFat.begin(false, "/ffat", 2, "ffat");
+    if (!ok) {                                  // never used (no Shelf files on it): set it up
+      Serial.println("[update] board storage not set up yet - formatting it");
+      ok = FFat.format(false, (char *)"ffat") && FFat.begin(false, "/ffat", 2, "ffat");
+    }
+    if (!ok) finish(status, "No SD card, and the board's storage won't open - put in an SD card", 0, 8000);
+    remove("/ffat/tidyos/update.bin");          // an old download that never went in
+    size_t freeB = FFat.totalBytes() - FFat.usedBytes();
+    Serial.printf("[update] board storage: %u KB free, the update needs %ld KB\n", (unsigned)(freeB / 1024), size / 1024);
+    if ((long)freeB < size + 65536) {
+      snprintf(b, sizeof(b), "Not enough room on the board (%u KB free, needs %ld KB) - put in an SD card", (unsigned)(freeB / 1024), (size + 65536) / 1024);
+      finish(status, b, 0, 9000);
+    }
+    dir = "/ffat/tidyos";
+    Preferences p; if (p.begin("tidyupd", false)) { p.putBool("inffat", true); p.end(); }   // so the next start can tidy up
+  }
+#endif
+  if (!onCard && dir == SD_MOUNT "/tidyos") finish(status, "Updating needs the SD card - please put it in", 0, 7000);
+  mkdir(dir.c_str(), 0777);
+  const std::string binPath = dir + "/update.bin";
+  FILE * f = fopen(binPath.c_str(), "wb");
+  if (!f) finish(status, onCard ? "Can't write to the SD card" : "Can't write to the board's storage", 0, 6000);
 
   mbedtls_sha256_context ctx;
   mbedtls_sha256_init(&ctx);
@@ -365,14 +392,14 @@ void updateRun(void (*status)(const char * msg, int percent))
   uint8_t h[32];
   mbedtls_sha256_finish_ret(&ctx, h);
   if (code != 200 || !writeOk || (long)done != size || hexOf(h) != sha) {
-    remove(SD_MOUNT "/tidyos/update.bin");
+    remove(binPath.c_str());
     if (code == -1 && s_lastErr[0]) snprintf(b, sizeof(b), "Download failed: %.70s", s_lastErr);
-    else snprintf(b, sizeof(b), code != 200 ? "Download failed (%d) - nothing changed" : !writeOk ? "SD card write failed - nothing changed" : "Download was damaged - nothing changed", code);
+    else snprintf(b, sizeof(b), code != 200 ? "Download failed (%d) - nothing changed" : !writeOk ? (onCard ? "SD card write failed - nothing changed" : "Writing to the board's storage failed - nothing changed") : "Download was damaged - nothing changed", code);
     finish(status, b, 0, 7000);
   }
-  f = fopen(SD_MOUNT "/tidyos/update.sha", "w");
+  f = fopen((dir + "/update.sha").c_str(), "w");
   if (f) { fputs(sha.c_str(), f); fclose(f); }
-  f = fopen(SD_MOUNT "/tidyos/update.ver", "w");      // which version this is: at the next start TidyOS can tell if it went in
+  f = fopen((dir + "/update.ver").c_str(), "w");      // which version this is: at the next start TidyOS can tell if it went in
   if (f) { fputs(ver.c_str(), f); fclose(f); }
 
   // hand over to the loader
@@ -380,7 +407,7 @@ void updateRun(void (*status)(const char * msg, int percent))
   esp_err_t er = loader ? esp_ota_set_boot_partition(loader) : ESP_ERR_NOT_FOUND;
   if (er != ESP_OK) {
     snprintf(b, sizeof(b), "Couldn't start the installer (%s) - reinstall from the web flasher", esp_err_to_name(er));
-    remove(SD_MOUNT "/tidyos/update.bin");
+    remove(binPath.c_str());
     finish(status, b, 0, 9000);
   }
   snprintf(b, sizeof(b), "Installing %s - TidyOS restarts in about 30 s", ver.c_str());

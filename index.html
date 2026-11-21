@@ -116,7 +116,7 @@ details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var
 
   <h2>2. Pick what to install</h2>
   <p>Tick the pieces you want copied onto the board. The bar shows where each one lands in the board's 16 MB of flash and how much room is left as you tick and untick. Then click <b>Install</b> and choose the board's port when Chrome asks. Chrome or Edge on a PC, Mac or Raspberry Pi. If no port shows up, hold <b>PRG</b> on the board while you plug it in.</p>
-  <div class="warn">With both systems on the board, it shows a <b>30-second boot menu</b> after every restart: a short press of PRG switches between them, holding PRG starts the one shown now, and if you do nothing it starts the one you used last. With only one, it starts that one straight away.</div>
+  <div class="warn">With both systems on the board, it shows a <b>10-second boot menu</b> after every restart: a short press of PRG switches between them, holding PRG starts the one shown now, and if you do nothing it starts the one you used last (it is already picked). With only one, it starts that one straight away.</div>
   <div class="card pick">
     <div class="pk-top">
       <div class="seg" role="radiogroup" aria-label="Board">
@@ -205,7 +205,7 @@ details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var
   <div class="oled">Start which one?
 &#9608; TidyOS Pro      &#9608;
   The Shelf
-PRG: switch  hold: go  27s</div>
+PRG: switch  hold: go  8s</div>
 
   <h2>5. The field tools</h2>
   <div class="grid">
@@ -234,7 +234,7 @@ PRG: switch  hold: go  27s</div>
   </div>
 
   <h2>Updates</h2>
-  <p>TidyOS Pro: Settings &rarr; <b>Check for updates</b> (needs the microSD card: the update is saved there and the boot menu installs it). The Shelf on a dual-boot board updates from its own settings page as usual; it gets its dual-boot version from this site.</p>
+  <p>TidyOS Pro: Settings &rarr; <b>Check for updates</b>. With a microSD card in, the update is saved on the card; <b>without one, it's saved in the board's own storage</b> (The Shelf's 7.4 MB area, which needs about 3 MB free). Then the boot menu installs it and starts the new TidyOS Pro. Boards installed before 3.1.2 need one install from this page first (tick TidyOS Pro and Boot menu) to get the new boot menu. The Shelf on a dual-boot board updates from its own settings page as usual.</p>
 
   <p class="muted" style="margin-top:36px">Source, build notes and wiring: <a href="https://github.com/hardwaremack-prog/Tidy-Pro-Plus">github.com/hardwaremack-prog/Tidy-Pro-Plus</a> (copied from <a href="https://github.com/CharlesPhillips3/TidyOS-Pro">TidyOS Pro</a>) &middot; Based on <a href="https://github.com/hardwaremack-prog/TidyOS-ESP32">TidyOS</a> and <a href="https://github.com/hardwaremack-prog/The-Shelf-Heltec-V4900mhzMesh">The Shelf for Heltec</a>. Built on FabGL (GPL v3), RadioLib, U8g2.</p>
 </div>

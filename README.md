@@ -26,7 +26,15 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.1.1. Settings → Check for updates now gets updates from this repo.
+Version 3.1.2. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.1.2
+- **Updates without an SD card**: with no card, TidyOS Pro saves the download in the board's own storage (the 7.4 MB
+  `ffat` area The Shelf uses; it's set up first if it was never used, and needs about 3 MB free). The boot menu now
+  looks for `/tidyos/update.bin` there as well as on the card, checks its SHA-256 and installs it.
+  Boards from before 3.1.2 need one install from the web flasher with *TidyOS Pro* and *Boot menu* ticked.
+- **Boot menu**: 10 seconds instead of 30, with the system used last already picked.
+- The bottom bar shows the two kinds of free RAM separately: the chip's own and the PSRAM.
 
 ### 3.1.1 fixes (first run on a real V4)
 - **Crash when opening apps** ("Stack canary watchpoint triggered" on core 0): the background tasks kept the stack
@@ -44,7 +52,7 @@ Version 3.1.1. Settings → Check for updates now gets updates from this repo.
 TidyOS Pro turns a Heltec WiFi LoRa 32 V4 into a pocket field computer for 900 MHz and AMI work.
 It's [TidyOS](https://github.com/hardwaremack-prog/TidyOS-ESP32) ported to the V4's ESP32-S3, with
 tools for its SX1262 radio and GNSS module. The TidyOS desktop shows up in any browser on the same Wi-Fi.
-It can also share the board with [The Shelf](https://github.com/hardwaremack-prog/The-Shelf-Heltec-V4900mhzMesh) (**dual boot**, with a 30-second boot menu on the OLED).
+It can also share the board with [The Shelf](https://github.com/hardwaremack-prog/The-Shelf-Heltec-V4900mhzMesh) (**dual boot**, with a 10-second boot menu on the OLED).
 
 > Status: 3.0.0, first release. Everything builds for the V4 and V4-R8. It has **not been run on a board yet**,
 > and the RF numbers haven't been compared with a calibrated instrument. Treat readings as indications until they have been.
@@ -119,7 +127,7 @@ The flash is split so both systems fit (16 MB):
 0x880000  ffat    7.4 MB  The Shelf's internal storage
 ```
 
-Every start goes through **TidyBoot**. It shows *Start which one?* on the OLED for 30 seconds: a short press of PRG
+Every start goes through **TidyBoot**. It shows *Start which one?* on the OLED for 10 seconds: a short press of PRG
 switches, holding PRG for a second starts the one shown, and if you do nothing it starts the last one used. With only one
 system installed it starts that one straight away, and waking from deep sleep goes straight back to the last one.
 Each system sends the next restart back to the menu.

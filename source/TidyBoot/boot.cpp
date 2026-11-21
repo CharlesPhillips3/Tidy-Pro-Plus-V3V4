@@ -2,12 +2,14 @@
 //
 // It lives in the small "factory" slot, so the board always starts here. It:
 //   1. installs an update waiting on the microSD card (or in The Shelf's internal storage):
-//        /tidyos/update.bin + update.sha   -> the TidyOS Pro slot   (TidyOS Pro's own updater)
+//        /tidyos/update.bin + update.sha   -> the TidyOS Pro slot   (TidyOS Pro's own updater;
+//                                              on the card, or in the board's storage with no card)
 //        /.shelf/update-app.bin            -> The Shelf's slot       (The Shelf's own updater)
-//   2. shows the menu on the OLED for 30 seconds:
+//   2. shows the menu on the OLED for 10 seconds, with the one used last already picked:
 //        PRG short press = switch between The Shelf and TidyOS Pro
 //        PRG held for 1 second = start the one picked now
-//      and then starts the one picked (the last one used, unless you change it).
+//      and then starts the one picked (the last one used, unless you change it). Whatever
+//      starts is remembered, so it's the one picked next time.
 //   3. With only one of them installed, it starts that one straight away.
 //
 // Each system sets the board back to start here, so every restart (or power-on) comes back to
@@ -35,7 +37,7 @@
 #else
   #define PIN_VEXT 36
 #endif
-#define COUNTDOWN_S 30
+#define COUNTDOWN_S 10
 
 static U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0, OLED_RST, OLED_SCL, OLED_SDA);
 static SPIClass sdSpi(FSPI);
@@ -119,11 +121,16 @@ static void note(const char * why)       // for TidyOS Pro to show after it star
 
 static void tidyUpdate()
 {
-  if (!s_card || !s_tidy) return;
-  File f = SD.open("/tidyos/update.bin", FILE_READ);
+  if (!s_tidy) return;
+  fs::FS * where = nullptr;
+  if (s_card && SD.exists("/tidyos/update.bin")) where = &SD;
+  else if (s_ffat && FFat.exists("/tidyos/update.bin")) where = &FFat;
+  if (!where) return;
+  File f = where->open("/tidyos/update.bin", FILE_READ);
   if (!f) return;
+  if (f.size() == 0) { f.close(); return; }           // emptied leftover
   std::string want;
-  File s = SD.open("/tidyos/update.sha", FILE_READ);
+  File s = where->open("/tidyos/update.sha", FILE_READ);
   if (s) { want = s.readString().c_str(); s.close(); }
   while (!want.empty() && (want.back() == '\n' || want.back() == '\r' || want.back() == ' ')) want.pop_back();
   screen("TidyOS Pro update", "Checking the file...");
@@ -132,14 +139,15 @@ static void tidyUpdate()
   size_t n; while ((n = f.read(buf, sizeof(buf))) > 0) mbedtls_sha256_update_ret(&c, buf, n);
   mbedtls_sha256_finish_ret(&c, h);
   if (want.size() != 64 || hexOf(h) != want) {
-    f.close(); SD.rename("/tidyos/update.bin", "/tidyos/update.bad");
+    f.close();
+    if (where == &SD) SD.rename("/tidyos/update.bin", "/tidyos/update.bad"); else FFat.remove("/tidyos/update.bin");
     note("the update file was damaged - nothing changed");
     return;
   }
   f.seek(0);
   bool ok = install(f, s_tidy, "TidyOS Pro");
   f.close();
-  SD.remove("/tidyos/update.bin"); SD.remove("/tidyos/update.sha");
+  where->remove("/tidyos/update.bin"); where->remove("/tidyos/update.sha"); where->remove("/tidyos/update.ver");
   note(ok ? "update installed" : "the update didn't go in - the old version is still there");
   if (ok || hasApp(s_tidy)) startApp(s_tidy, "TidyOS Pro");
 }
