@@ -26,7 +26,12 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.1.2. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.1.3. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.1.3
+- The bottom bar also shows free storage: the SD card's when it's on, otherwise TidyOS Pro's own flash area.
+- Web flasher: after installing, the board now restarts into its program by itself. (esptool-js's own reset left
+  the V4 in download mode with a dark screen until the reset button was pressed.)
 
 ### 3.1.2
 - **Updates without an SD card**: with no card, TidyOS Pro saves the download in the board's own storage (the 7.4 MB

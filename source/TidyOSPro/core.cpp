@@ -864,8 +864,23 @@ private:
 #ifdef TIDYOS_HTML5
     else {                                                                    // (you're looking at it in the browser)
       size_t ps = heap_caps_get_free_size(MALLOC_CAP_SPIRAM), in = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-      if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM)) snprintf(b, sizeof(b), "RAM %uK + PSRAM %u.%uM free", (unsigned)(in / 1024), (unsigned)(ps / 1048576), (unsigned)(ps % 1048576 * 10 / 1048576));
-      else snprintf(b, sizeof(b), "RAM %uK", (unsigned)(ramFree() / 1024));
+      // free storage: the SD card when it's on, otherwise TidyOS's own flash area (looked up every 10 s)
+      static char st[28] = ""; static uint32_t stAt = 0;
+      if (!st[0] || millis() - stAt > 10000) {
+        stAt = millis();
+        int64_t total = 0, used = 0;
+        auto human = [](int64_t n, char * o, size_t m) {
+          if (n >= (1LL << 30)) snprintf(o, m, "%u.%uG", (unsigned)(n >> 30), (unsigned)((n % (1LL << 30)) * 10 >> 30));
+          else if (n >= (1LL << 20)) snprintf(o, m, "%u.%uM", (unsigned)(n >> 20), (unsigned)((n % (1LL << 20)) * 10 >> 20));
+          else snprintf(o, m, "%uK", (unsigned)(n >> 10));
+        };
+        char h[12];
+        if (gSDMounted && FileBrowser::getFSInfo(fabgl::DriveType::SDCard, 0, &total, &used)) { human(total - used, h, sizeof(h)); snprintf(st, sizeof(st), ", SD %s", h); }
+        else if (gFlashMounted && FileBrowser::getFSInfo(fabgl::DriveType::SPIFFS, 0, &total, &used)) { human(total - used, h, sizeof(h)); snprintf(st, sizeof(st), ", flash %s", h); }
+        else st[0] = 0;
+      }
+      if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM)) snprintf(b, sizeof(b), "RAM %uK + PSRAM %u.%uM%s free", (unsigned)(in / 1024), (unsigned)(ps / 1048576), (unsigned)(ps % 1048576 * 10 / 1048576), st);
+      else snprintf(b, sizeof(b), "RAM %uK%s free", (unsigned)(ramFree() / 1024), st);
     }
 #else
     else snprintf(b, sizeof(b), "Keyboard: %s  Mouse: %s   RAM %uK", inputKeyboards() ? "on" : "--", inputMice() ? "on" : "--", (unsigned)(ramFree() / 1024));

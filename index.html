@@ -269,9 +269,21 @@ async function connect(port) {
   if (!bytes) throw new Error("Couldn't read the board's flash size.");
   return { loader, transport, chip, bytes };
 }
+// Restart the board into its program. (esptool-js 0.5.7's own "hard_reset" only lets go of the reset
+// line without pulling it first, so the board stayed in download mode with a dark screen.)
+// DTR off = GPIO 0 left high, so the chip starts the program; then RTS pulses the reset (EN) line.
+// Works for the V4's built-in USB and for USB-serial chips alike.
 async function done(c) {
-  try { await c.loader.after('hard_reset'); } catch {}
-  try { await c.transport.disconnect(); } catch {}
+  const t = c.transport, wait = ms => new Promise(r => setTimeout(r, ms));
+  try {
+    await t.setDTR(false);
+    await t.setRTS(true);
+    await wait(150);
+    await t.setRTS(false);
+    await t.setDTR(false);
+    await wait(200);
+  } catch {}
+  try { await t.disconnect(); } catch {}
 }
 function friendly(e) {
   const m = String(e && e.message || e);
