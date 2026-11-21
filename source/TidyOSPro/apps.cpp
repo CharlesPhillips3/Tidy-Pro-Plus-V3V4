@@ -1835,7 +1835,7 @@ public:
       }
       if (gApp->messageBox("Updates", 
 #ifdef TIDYOS_V4
-        "Restart and check GitHub for a newer TidyOS Pro? Needs Wi-Fi. No SD card needed: without one, the update goes in the board's own storage."
+        "Restart and check GitHub? Needs Wi-Fi (no SD card needed)."
 #else
         "Restart and check GitHub? Needs Wi-Fi and the SD card."
 #endif
