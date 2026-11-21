@@ -4,7 +4,9 @@
   firmware/pro-<b>-boot.bin        0x0 .. 0x9000   bootloader + partition table
   firmware/pro-<b>-main.bin        0xE000 ..       boot selection (blank), boot menu, TidyOS Pro
   firmware/pro-<b>-dual-main.bin   0xE000 ..       the same + The Shelf + its web app (dual boot)
-  firmware/tidyos-pro-<b>.bin      the TidyOS Pro app alone (TidyOS Pro's own Wi-Fi updater)
+  firmware/tidyos-pro-<b>.bin      TidyOS Pro, field build (the field tools + everyday apps)
+  firmware/tidyos-pro-<b>-full.bin TidyOS Pro, full build (+ every TidyOS-ESP32 app: games, Doodle, Latch...)
+                                   The one-click images and the Wi-Fi updater use the full build when there is one.
   manifest-pro-<b>[-dual].json     esp-web-tools manifests (the install buttons)
   manifest-pro[-r8].json           what TidyOS Pro's updater reads
   shelf/ota/shelf-<b>-dual.*       what The Shelf's own updater reads on a dual-boot board
@@ -13,7 +15,8 @@
 never written by an install, so reinstalling keeps them.
 
 usage: package.py VERSION BUILD_DIR SHELF_WWW_V4 SHELF_WWW_R8
-  BUILD_DIR holds b-s3, b-boot, b-shelf (V4) and b-s3r8, b-bootr8, b-shelfr8 (V4-R8)
+  BUILD_DIR holds b-s3, b-boot, b-shelf (V4) and b-s3r8, b-bootr8, b-shelfr8 (V4-R8),
+  plus b-s3full / b-s3r8full (built with -DTIDY_ALL_APPS=1)
 """
 import sys, os, json, gzip, hashlib, re
 
@@ -40,6 +43,10 @@ for b, sfx in (('v4', ''), ('v4-r8', 'r8')):
     pt = rd(os.path.join(s3, 'TidyOSPro.ino.partitions.bin'))
     menu = rd(os.path.join(boot, 'TidyBoot.ino.bin'))
     app = rd(os.path.join(s3, 'TidyOSPro.ino.bin'))
+    open(os.path.join(fw, f'tidyos-pro-{b}.bin'), 'wb').write(app)          # field build
+    fp = os.path.join(bd, 'b-s3' + sfx + 'full', 'TidyOSPro.ino.bin')
+    if os.path.exists(fp):
+        app = rd(fp); open(os.path.join(fw, f'tidyos-pro-{b}-full.bin'), 'wb').write(app)
     assert len(menu) <= TIDY - MENU, 'boot menu too big'
     assert len(app) <= SHELF - TIDY, 'TidyOS Pro too big'
     bootimg = bytearray(b'\xff' * 0x9000); bootimg[0:len(bl)] = bl; bootimg[0x8000:0x8000 + len(pt)] = pt
@@ -47,7 +54,6 @@ for b, sfx in (('v4', ''), ('v4-r8', 'r8')):
     main = bytearray(b'\xff' * (TIDY + len(app) - 0xE000))
     place(main, MENU, menu, 0xE000); place(main, TIDY, app, 0xE000)
     open(os.path.join(fw, f'pro-{b}-main.bin'), 'wb').write(main)
-    open(os.path.join(fw, f'tidyos-pro-{b}.bin'), 'wb').write(app)
     parts = lambda m: [{'path': f'firmware/pro-{b}-boot.bin', 'offset': 0}, {'path': f'firmware/{m}', 'offset': 0xE000}]
     name = 'TidyOS Pro for Heltec ' + ('V4' if b == 'v4' else 'V4-R8')
     json.dump({'name': name, 'version': ver, 'new_install_prompt_erase': True,
@@ -55,7 +61,7 @@ for b, sfx in (('v4', ''), ('v4-r8', 'r8')):
               open(os.path.join(root, f'manifest-pro-{b}.json'), 'w'), indent=2)
     # TidyOS Pro's own updater
     json.dump({'name': name, 'version': ver,
-               'tidyos': {'version': ver, 'app': f'firmware/tidyos-pro-{b}.bin', 'size': len(app), 'sha256': hashlib.sha256(app).hexdigest()}},
+               'tidyos': {'version': ver, 'app': f'firmware/tidyos-pro-{b}' + ('-full' if os.path.exists(fp) else '') + '.bin', 'size': len(app), 'sha256': hashlib.sha256(app).hexdigest()}},
               open(os.path.join(root, 'manifest-pro.json' if b == 'v4' else 'manifest-pro-r8.json'), 'w'), indent=2)
     # dual boot: + The Shelf and its web app
     sp = os.path.join(shelf, 'ShelfV4.ino.bin')

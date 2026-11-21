@@ -10,10 +10,23 @@ Tidy Pro Plus is a copy of [TidyOS Pro](https://github.com/CharlesPhillips3/Tidy
 - **See the free space as you tick**: a map of the board's 16 MB shows where each piece goes and how much is left
   (room for files, spare room for updates, and empty space), with the total free in big numbers.
 - **Clean-up choices**: empty the slots you didn't tick, forget Wi-Fi and settings, or wipe either system's on-board files.
-- Quick picks for dual boot, TidyOS Pro only or The Shelf only, plus the original one-click buttons.
+- **Pick TidyOS Pro's apps**: all 32, ticked one by one. That's the field tools, the everyday apps, and every app from
+  [TidyOS-ESP32](https://github.com/hardwaremack-prog/TidyOS-ESP32) that TidyOS Pro had left out: Ready, Steady,
+  Rugged, Latch, Games, Doodle, Pictures, Music, HTML Games and HTML Programs. Each one shows how much flash it adds.
+- Quick picks for dual boot, TidyOS Pro only or The Shelf only, plus the original one-click buttons (those now install the full build, every app on).
+
+### How the app picking works
+
+TidyOS Pro is built twice: the **field build** (`tidyos-pro-<board>.bin`, 2.59 MB: the field tools and everyday apps) and
+the **full build** (`tidyos-pro-<board>-full.bin`, 2.86 MB: every TidyOS app as well, built with `-DTIDY_ALL_APPS=1`).
+The flasher uses the field build unless a TidyOS-ESP32 app is ticked. Before writing TidyOS Pro, it puts the ticked apps
+into the image's app list (`TIDY_APP_LIST` in `core.cpp`) and fixes the image's checksum and SHA-256, so the board
+accepts it. On its first start the board saves that list in its settings, so a Wi-Fi update keeps your choice.
+Settings is always on the desktop. With more than 24 apps the desktop's icon rows get shorter so all 32 fit.
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
-after `package.py`), and `parts.json` lists their sizes and where they go. The firmware itself is TidyOS Pro 3.0.0, unchanged.
+after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
+Version 3.1.0. Settings → Check for updates now gets updates from this repo.
 
 [![The TidyOS Pro install page](docs/screenshot.png)](docs/screenshot-full.png)
 
@@ -40,8 +53,7 @@ It can also share the board with [The Shelf](https://github.com/hardwaremack-pro
 | **Clone** | Copies this board's firmware onto another V4 by wire (see below). |
 | **The Shelf** | Restarts into The Shelf on a dual-boot board. |
 | Nic Sweep, Ping, Tidy, Neat, Files, Calculator, Browser, Messages, Clock, Screenshot, Git-Store, Settings, Task Manager, Switches | From TidyOS. Tidy opens the CSV files the RF tools save. |
-
-Games, Doodle, Music, Pictures, Latch, Ready, Steady, Rugged and the HTML launchers are left out to make room.
+| Ready, Steady, Rugged, Latch, Games, Doodle, Pictures, Music, HTML Games, HTML Programs | From TidyOS, in the full build. Pick them in the flasher. |
 
 **The desktop's right-hand panel** shows the time and weather, then **field conditions**, each with a 4-day graph (one point every 3 hours):
 - **Wind and gusts** (mph, with direction) and **humidity** (with dew point)
@@ -124,7 +136,7 @@ piece with MD5. It doesn't copy settings, Wi-Fi passwords or files: the other bo
 ```
 
 You need **arduino-cli** with the **esp32 core 2.0.17** (FabGL doesn't build on 3.x), and these libraries:
-- **RadioLib 7.1.2** and **U8g2**
+- **RadioLib 7.1.2**, **U8g2** and **NimBLE-Arduino 1.4.3**
 - **ESPAsyncWebServer 3.3.23** and **ArduinoJson 7** (for The Shelf)
 - `libraries/FabGL`, included here: FabGL 1.0.9 with TidyOS's patches and the ESP32-S3 port (see its README)
 

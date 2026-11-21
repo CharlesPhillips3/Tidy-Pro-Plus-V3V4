@@ -114,8 +114,8 @@ static bool verifyPeer(WiFiClientSecure & c, const std::string & host)
   return false;                                 // checked: the caller connects again with a fresh client
 }
 
-#define UPD_HOST "charlesphillips3.github.io"
-#define UPD_BASE "/TidyOS-Pro/"
+#define UPD_HOST "hardwaremack-prog.github.io"
+#define UPD_BASE "/Tidy-Pro-Plus/"
 #if defined(TIDYOS_V4) && CONFIG_SPIRAM_MODE_OCT
   #define UPD_MANIFEST "manifest-pro-r8.json"
 #elif defined(TIDYOS_V4)

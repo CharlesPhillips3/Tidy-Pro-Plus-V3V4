@@ -81,6 +81,17 @@ table.mt td{padding:5px 4px;border-bottom:1px solid var(--divider)}
 table.mt td:last-child{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 table.mt tr.tot td{font-weight:700;border-bottom:0;padding-top:8px}
 .btn.big{width:100%;margin-top:14px;font-size:17px;padding:13px}
+.apps{margin-top:18px;border-top:1px solid var(--divider);padding-top:16px}
+.apps-head{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;justify-content:space-between}
+.apps-cols{display:grid;grid-template-columns:repeat(3,1fr);gap:4px 18px}
+@media(max-width:760px){.apps-cols{grid-template-columns:1fr}}
+.ag{font-size:13px;font-weight:700;margin:4px 0 4px;color:var(--text)}
+.app{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:8px;cursor:pointer;font-size:14px}
+.app:hover{background:rgba(255,255,255,.04)}
+.app input{width:16px;height:16px;accent-color:var(--accent);margin:0;cursor:pointer}
+.app .k{margin-left:auto;color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
+.app.lock{opacity:.7;cursor:default}
+.apps.off{opacity:.4;pointer-events:none}
 details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var(--muted);font-size:14px}
 @media(max-width:560px){h1{font-size:30px}header img{width:72px;height:72px}}
 </style>
@@ -122,7 +133,7 @@ details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var
     <div class="pk-cols">
       <div>
         <h3 class="pk-h">Systems</h3>
-        <label class="row"><input type="checkbox" id="c-tidyos" checked><span class="sw" style="--c:var(--c-tidy)"></span><span class="nm">TidyOS Pro<small>The field computer: RF Sweep, Meter Traffic, Site Survey, GPS, Tidy, Neat&hellip;</small></span><span class="sz" id="s-tidyos"></span></label>
+        <label class="row"><input type="checkbox" id="c-tidyos" checked><span class="sw" style="--c:var(--c-tidy)"></span><span class="nm">TidyOS Pro<small id="n-tidyos">The field computer. Pick its apps below.</small></span><span class="sz" id="s-tidyos"></span></label>
         <label class="row"><input type="checkbox" id="c-shelf" checked><span class="sw" style="--c:var(--c-shelf)"></span><span class="nm">The Shelf<small>Home-network hub (dual-boot build)</small></span><span class="sz" id="s-shelf"></span></label>
         <label class="row sub"><input type="checkbox" id="c-www" checked><span class="sw" style="--c:var(--c-www)"></span><span class="nm">The Shelf's web app<small id="n-www">The pages The Shelf shows in your browser</small></span><span class="sz" id="s-www"></span></label>
 
@@ -150,11 +161,27 @@ details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var
         <div class="fb-status" id="pkStatus" hidden><div class="fb-bar"><div id="pkFill"></div></div><div id="pkMsg"></div></div>
       </div>
     </div>
+    <div class="apps" id="appsBox">
+      <div class="apps-head">
+        <h3 class="pk-h" style="margin:0">TidyOS Pro's apps <span class="muted" id="a-count"></span></h3>
+        <div class="presets">
+          <button class="chip" data-apps="all">All apps</button>
+          <button class="chip" data-apps="field">Field tools + everyday</button>
+          <button class="chip" data-apps="tidyos">Everything from TidyOS-ESP32</button>
+        </div>
+      </div>
+      <p class="muted" style="margin:6px 0 10px" id="a-build"></p>
+      <div class="apps-cols">
+        <div><div class="ag">900 MHz field tools</div><div id="ag-field"></div></div>
+        <div><div class="ag">Everyday apps</div><div id="ag-core"></div></div>
+        <div><div class="ag">From TidyOS-ESP32 <span class="muted">(full build)</span></div><div id="ag-extra"></div></div>
+      </div>
+    </div>
   </div>
-  <details class="classic"><summary>One-click classic install buttons (no choices)</summary>
+  <details class="classic"><summary>One-click classic install buttons (no choices: every app on)</summary>
     <div class="grid" style="margin-top:12px">
       <div class="card"><h3>Heltec V4 &middot; dual boot</h3><esp-web-install-button manifest="manifest-pro-v4-dual.json"><button slot="activate">Install dual boot</button></esp-web-install-button><small>About 7.5 MB.</small></div>
-      <div class="card"><h3>Heltec V4 &middot; TidyOS Pro only</h3><esp-web-install-button manifest="manifest-pro-v4.json"><button slot="activate">Install TidyOS Pro</button></esp-web-install-button><small>About 3 MB.</small></div>
+      <div class="card"><h3>Heltec V4 &middot; TidyOS Pro only</h3><esp-web-install-button manifest="manifest-pro-v4.json"><button slot="activate">Install TidyOS Pro</button></esp-web-install-button><small>About 3.3 MB.</small></div>
       <div class="card"><h3>Heltec V4-R8</h3><esp-web-install-button manifest="manifest-pro-v4-r8-dual.json"><button slot="activate">Install dual boot (R8)</button></esp-web-install-button>
         <p style="margin-top:10px"><esp-web-install-button manifest="manifest-pro-v4-r8.json"><button slot="activate" class="btn alt">TidyOS Pro only (R8)</button></esp-web-install-button></p></div>
     </div>
@@ -328,8 +355,47 @@ const on = id => $('c-' + id).checked;
 const sz = n => n >= 1048576 ? (n / 1048576).toFixed(n >= 10 * 1048576 ? 1 : 2).replace(/\.?0+$/, '') + ' MB' : Math.round(n / 1024) + ' KB';
 
 // Works out what will be on the board, what gets written, and what's free.
+// ---- the apps on TidyOS Pro's desktop
+const appBox = id => document.getElementById('a-' + id);
+const appOn = a => a.name === 'Settings' || (appBox(a.bit) && appBox(a.bit).checked);
+const needFull = () => PARTS.apps.some(a => a.full && appOn(a));
+function appBits() { let m = 0; for (const a of PARTS.apps) if (appOn(a)) m |= (1 << a.bit); return m >>> 0; }
+function buildApps() {
+  for (const a of PARTS.apps) {
+    const l = document.createElement('label'); l.className = 'app' + (a.name === 'Settings' ? ' lock' : '');
+    l.innerHTML = `<input type="checkbox" id="a-${a.bit}" checked${a.name === 'Settings' ? ' disabled' : ''}><span>${a.name}</span><span class="k">${a.name === 'Settings' ? 'always' : a.kb ? (a.kb > 1 ? '+' + a.kb + ' KB' : 'tiny') : ''}</span>`;
+    l.querySelector('input').addEventListener('change', draw);
+    $('ag-' + a.group).appendChild(l);
+  }
+  document.querySelectorAll('[data-apps]').forEach(b => b.onclick = () => {
+    const k = b.dataset.apps;
+    for (const a of PARTS.apps) appBox(a.bit).checked = a.name === 'Settings' || k === 'all' || (k === 'field' ? !a.full : a.group !== 'field');
+    draw();
+  });
+}
+// Writes the ticked apps into the TidyOS Pro image and fixes its checksum and SHA-256 hash
+// (the image format the ESP32-S3 boot loader checks: header, segments, checksum, hash).
+async function patchApps(data, at, bits) {
+  const magic = new TextEncoder().encode('TIDYPLUS-APPS-1\0');
+  for (let i = 0; i < 16; i++) if (data[at + i] !== magic[i]) throw new Error("This TidyOS Pro file doesn't have an app list in it");
+  const dv = new DataView(data.buffer, data.byteOffset, data.byteLength);
+  dv.setUint32(at + 16, bits, true); dv.setUint32(at + 20, 1, true);
+  if (data[0] !== 0xE9) throw new Error('That is not an ESP32 program image');
+  let off = 24, cs = 0xEF;
+  for (let n = 0; n < data[1]; n++) {
+    const len = dv.getUint32(off + 4, true); off += 8;
+    for (let i = 0; i < len; i++) cs ^= data[off + i];
+    off += len;
+  }
+  off = (off + 16) & ~15;
+  data[off - 1] = cs;
+  if (data[23] === 1) data.set(new Uint8Array(await crypto.subtle.digest('SHA-256', data.subarray(0, off))), off);
+  return data;
+}
+
 function plan() {
-  const P = PARTS.boards[board()], clear = on('clear');
+  const base = PARTS.boards[board()], clear = on('clear');
+  const P = Object.assign({}, base, { tidyos: needFull() ? base.tidyosFull : base.tidyos });
   const st = {}, writes = [];
   for (const k of ['menu', 'tidyos', 'shelf', 'www']) {
     if (on(k)) st[k] = 'install';
@@ -342,7 +408,7 @@ function plan() {
   if (on('wnvs')) writes.push({ what: 'Forget Wi-Fi and settings', at: 0x9000, fill: 0x5000 });
   if (on('menu') || on('tidyos') || on('shelf')) writes.push({ what: 'Start at the boot menu', at: 0xE000, fill: 0x2000 });
   for (const k of ['menu', 'tidyos', 'shelf', 'www']) {
-    if (st[k] === 'install') writes.push({ what: NAME[k], at: P[k].offset, file: P[k].path, size: P[k].size });
+    if (st[k] === 'install') writes.push({ what: NAME[k], at: P[k].offset, file: P[k].path, size: P[k].size, apps: k === 'tidyos' ? P[k].appList : undefined });
     else if (st[k] === 'empty' && clear) writes.push({ what: 'Empty ' + NAME[k] + ' slot', at: L[k].at, fill: k === 'www' ? 0x2000 : 0x1000 });
   }
   if (on('wtfs')) writes.push({ what: "Wipe TidyOS Pro's on-board files", at: L.tidyfs.at, fill: L.tidyfs.size });
@@ -367,8 +433,15 @@ function plan() {
 
 function draw() {
   if (!PARTS) return;
-  const P = PARTS.boards[board()];
+  const P = plan().P;
   for (const k of ['boot', 'menu', 'tidyos', 'shelf', 'www']) $('s-' + k).textContent = sz(P[k].size);
+  const nApps = PARTS.apps.filter(appOn).length, full = needFull(), extra = (PARTS.boards[board()].tidyosFull.size - PARTS.boards[board()].tidyos.size);
+  $('a-count').textContent = `· ${nApps} of ${PARTS.apps.length} on the desktop`;
+  $('a-build').innerHTML = full
+    ? `Using the <b>full build</b> (${sz(P.tidyos.size)}): it has every TidyOS app in it, ${sz(extra)} more than the field build. Apps you untick are left off the desktop. Untick all of the TidyOS-ESP32 apps to get that ${sz(extra)} back.`
+    : `Using the <b>field build</b> (${sz(P.tidyos.size)}). Tick any TidyOS-ESP32 app to switch to the full build (${sz(extra)} more).`;
+  $('n-tidyos').textContent = full ? 'Full build: field tools + every TidyOS app' : 'Field build: field tools + everyday apps';
+  $('appsBox').classList.toggle('off', !on('tidyos'));
   for (const id of ['tidyos', 'shelf', 'www', 'boot', 'menu']) $('c-' + id).closest('.row').classList.toggle('off', !on(id));
   $('n-www').textContent = on('shelf') && !on('www') ? "Unticked: the web app already on the board is kept" : "The pages The Shelf shows in your browser";
   const r = plan();
@@ -428,14 +501,15 @@ document.querySelectorAll('.chip').forEach(b => b.onclick = () => {
   $('c-boot').checked = $('c-menu').checked = $('c-clear').checked = true;
   draw();
 });
-fetch('parts.json').then(r => r.json()).then(j => { PARTS = j; draw(); })
+fetch('parts.json').then(r => r.json()).then(j => { PARTS = j; buildApps(); draw(); })
   .catch(() => { $('m-note').textContent = "Couldn't load parts.json, so the picker can't work. Use the classic buttons below."; $('pkGo').disabled = true; });
 
 $('pkGo').onclick = async () => {
   const r = plan();
   if (!r.writes.length) return;
+  const appsLine = on('tidyos') ? `\n\nTidyOS Pro's desktop: ${PARTS.apps.filter(appOn).length} apps (${PARTS.apps.filter(appOn).map(a => a.name).join(', ')}).` : '';
   const list = r.writes.map(w => '• ' + w.what + (w.size ? ` (${sz(w.size)})` : w.fill >= 0x100000 ? ` (${sz(w.fill)})` : '')).join('\n');
-  if (!confirm(`Write these to the board?\n\n${list}\n\nAbout ${sz(r.free)} will be free afterwards. Back up first (step 1) if you might want the board as it is now.`)) return;
+  if (!confirm(`Write these to the board?\n\n${list}${appsLine}\n\nAbout ${sz(r.free)} will be free afterwards. Back up first (step 1) if you might want the board as it is now.`)) return;
   at = 'pk'; let c; busy(true);
   try {
     show('Downloading…', 0);
@@ -446,6 +520,7 @@ $('pkGo').onclick = async () => {
         const res = await fetch(w.file); if (!res.ok) throw new Error(`Couldn't download ${w.file}`);
         const data = new Uint8Array(await res.arrayBuffer());
         if (data.length !== w.size) throw new Error(`${w.file} isn't the expected size`);
+        if (w.apps) await patchApps(data, w.apps, appBits());
         bin = ''; for (let i = 0; i < data.length; i += 0x8000) bin += String.fromCharCode.apply(null, data.subarray(i, i + 0x8000));
       } else bin = '\xff'.repeat(w.fill);
       fileArray.push({ data: bin, address: w.at });

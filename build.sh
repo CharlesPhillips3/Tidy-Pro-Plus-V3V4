@@ -7,7 +7,7 @@
 #
 # Needs: arduino-cli, esp32 core 2.0.17 (FabGL doesn't build on 3.x), and the libraries:
 #   libraries/FabGL      FabGL 1.0.9 with TidyOS's patches and the ESP32-S3 port (in this repo)
-#   RadioLib 7.1.2, U8g2, ESPAsyncWebServer 3.3.23 + ArduinoJson 7 (for The Shelf)
+#   RadioLib 7.1.2, U8g2, NimBLE-Arduino 1.4.3, ESPAsyncWebServer 3.3.23 + ArduinoJson 7 (for The Shelf)
 #   source/ShelfDual/libraries (The Shelf's own SD + AsyncTCP)
 # The Shelf's web app image comes ready-made from The Shelf's installer site (SHELF_WWW=... to override).
 set -euo pipefail
@@ -32,6 +32,11 @@ for v in v4 r8; do
     --build-property "compiler.cpp.extra_flags=-DTIDYOS_HTML5" \
     --build-property "compiler.c.elf.extra_flags=-Wl,--wrap=ff_disk_read -Wl,--wrap=ff_disk_write -Wl,--wrap=esp_panic_handler" \
     --build-property "upload.maximum_size=3145728" --build-path "$B/b-s3$sfx" source/TidyOSPro
+  # the full build: every TidyOS-ESP32 app as well (the flasher picks which ones show)
+  arduino-cli compile --fqbn "$F" ${TP[@]+"${TP[@]}"} --library "$PWD/libraries/FabGL" \
+    --build-property "compiler.cpp.extra_flags=-DTIDYOS_HTML5 -DTIDY_ALL_APPS=1" \
+    --build-property "compiler.c.elf.extra_flags=-Wl,--wrap=ff_disk_read -Wl,--wrap=ff_disk_write -Wl,--wrap=esp_panic_handler" \
+    --build-property "upload.maximum_size=3145728" --build-path "$B/b-s3${sfx}full" source/TidyOSPro
   arduino-cli compile --fqbn "$F" ${TP[@]+"${TP[@]}"} --build-property "upload.maximum_size=458752" --build-path "$B/b-boot$sfx" source/TidyBoot
   arduino-cli compile --fqbn "$F" ${TP[@]+"${TP[@]}"} \
     --build-property "compiler.cpp.extra_flags=-DCONFIG_ASYNC_TCP_RUNNING_CORE=0 -DCONFIG_ASYNC_TCP_STACK_SIZE=16384 -DCONFIG_ASYNC_TCP_QUEUE_SIZE=256 -DSHELF_DUALBOOT" \

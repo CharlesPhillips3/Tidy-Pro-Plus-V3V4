@@ -525,6 +525,7 @@ struct DeskIcon {
   const char ** art;      // pixel art, or nullptr for a glyph tile
   const char *  glyph;
   void (*open)();
+  uint8_t       bit;      // which bit of the app list turns it on (fixed: the web flasher uses these numbers)
 };
 
 static void openNeat0()    { openNeat(nullptr); }
@@ -549,33 +550,81 @@ static bool appIsOpen(const char * label)
   return false;
 }
 
-// TidyOS Pro: the field tools first, then the everyday apps. (Games, Doodle, Music, Pictures,
-// Latch, Ready, Steady, Rugged and the HTML launchers are left out to make room.)
-static const DeskIcon ICONS[] = {
-  { "RF Sweep",   ART_RFSWEEP, nullptr, openRfSweep },
-  { "Meter Traffic", ART_AMI,  nullptr, openMeterTraffic },
-  { "Site Survey", ART_SURVEY, nullptr, openSiteSurvey },
-  { "RF Exposure", ART_EXPO,  nullptr, openRfExposure },
-  { "GPS",        ART_GPS,   nullptr, openGps },
-  { "Clone",      ART_CLONE, nullptr, openClone },
-  { "Wi-Fi Scan", nullptr,   "WiFi",  openWifiScan },
-  { "Nic Sweep",  ART_NIC,   nullptr, openScan },
-  { "Ping",       ART_PING,  nullptr, openPing },
-  { "Tidy",       ART_TIDY,  nullptr, openTidy0 },
-  { "Neat",       ART_NEAT,  nullptr, openNeat0 },
-  { "Files",      ART_FILES, nullptr, openFiles },
-  { "Calculator", ART_CALC,  nullptr, openCalculator },
-  { "Browser",    nullptr,   "www",   openBrowser0 },
-  { "Messages",   ART_MSG,   nullptr, openMessages },
-  { "Clock",      ART_CLOCK, nullptr, openClock },
-  { "Screenshot", ART_SHOT,  nullptr, openShot },
-  { "Git-Store",  ART_CLOUD, nullptr, openGitStore },
-  { "Settings",   ART_GEAR,  nullptr, openSettings },
-  { "Task Manager", ART_SYS, nullptr, openSystem },
-  { "Switches",   ART_SD,    nullptr, openSwitches },
-  { "The Shelf",  nullptr,   "Shelf", openShelfSwitch },
+// Tidy Pro Plus: every TidyOS app, plus the field tools. Which ones are on the desktop is
+// chosen in the web flasher: it writes the list into TIDY_APP_LIST below (and then the board
+// keeps it in its settings, so an update doesn't undo it). The bit numbers must not change.
+// Builds without TIDY_ALL_APPS (the smaller "field" build) leave the TidyOS-ESP32 extras out.
+#ifndef TIDY_ALL_APPS
+#define TIDY_ALL_APPS 0
+#endif
+static const DeskIcon ALL_ICONS[] = {
+  { "RF Sweep",   ART_RFSWEEP, nullptr, openRfSweep, 0 },
+  { "Meter Traffic", ART_AMI,  nullptr, openMeterTraffic, 1 },
+  { "Site Survey", ART_SURVEY, nullptr, openSiteSurvey, 2 },
+  { "RF Exposure", ART_EXPO,  nullptr, openRfExposure, 3 },
+  { "GPS",        ART_GPS,   nullptr, openGps, 4 },
+  { "Clone",      ART_CLONE, nullptr, openClone, 5 },
+  { "Wi-Fi Scan", nullptr,   "WiFi",  openWifiScan, 6 },
+  { "Nic Sweep",  ART_NIC,   nullptr, openScan, 7 },
+  { "Ping",       ART_PING,  nullptr, openPing, 8 },
+  { "Tidy",       ART_TIDY,  nullptr, openTidy0, 9 },
+  { "Neat",       ART_NEAT,  nullptr, openNeat0, 10 },
+#if TIDY_ALL_APPS
+  { "Ready",      ART_READY, nullptr, openReady, 22 },
+  { "Steady",     nullptr,   "$",     openSteady, 23 },
+  { "Rugged",     ART_RUGGED, nullptr, openRugged, 24 },
+#endif
+  { "Files",      ART_FILES, nullptr, openFiles, 11 },
+  { "Calculator", ART_CALC,  nullptr, openCalculator, 12 },
+  { "Browser",    nullptr,   "www",   openBrowser0, 13 },
+  { "Messages",   ART_MSG,   nullptr, openMessages, 14 },
+  { "Clock",      ART_CLOCK, nullptr, openClock, 15 },
+#if TIDY_ALL_APPS
+  { "Games",      ART_GAMES, nullptr, openGames, 25 },
+  { "Doodle",     ART_DOODLE, nullptr, openDoodle, 26 },
+  { "Pictures",   ART_PICS,  nullptr, openPictures0, 27 },
+  { "Music",      ART_MUSIC, nullptr, openMusic, 28 },
+  { "Latch",      ART_LOCK,  nullptr, openLatch, 29 },
+  { "HTML Games", ART_HTMLG, nullptr, openHtmlGames, 30 },
+  { "HTML Programs", ART_HTMLP, nullptr, openHtmlPrograms, 31 },
+#endif
+  { "Screenshot", ART_SHOT,  nullptr, openShot, 16 },
+  { "Git-Store",  ART_CLOUD, nullptr, openGitStore, 17 },
+  { "Settings",   ART_GEAR,  nullptr, openSettings, 18 },
+  { "Task Manager", ART_SYS, nullptr, openSystem, 19 },
+  { "Switches",   ART_SD,    nullptr, openSwitches, 20 },
+  { "The Shelf",  nullptr,   "Shelf", openShelfSwitch, 21 },
 };
-static const int NICONS = sizeof(ICONS) / sizeof(ICONS[0]);
+
+// The web flasher finds this by its name and writes the ticked apps into it (then fixes the
+// image's checksum and hash). "set" is 1 only in a copy the flasher wrote.
+struct TidyAppList { char magic[16]; uint32_t apps; uint32_t set; };
+extern "C" __attribute__((used)) const volatile TidyAppList TIDY_APP_LIST = { "TIDYPLUS-APPS-1", 0xFFFFFFFFu, 0 };
+
+static DeskIcon ICONS[sizeof(ALL_ICONS) / sizeof(ALL_ICONS[0])];
+static int NICONS = 0;
+static uint32_t s_appBits = 0xFFFFFFFFu;
+
+// Which apps go on the desktop: the flasher's list when it just wrote one (kept in the settings
+// from then on), otherwise the kept list, otherwise all of them. Settings is always there.
+static void chooseDeskApps()
+{
+  uint32_t bits = 0xFFFFFFFFu;
+  Preferences p;
+  if (p.begin("tidyplus", false)) {
+    if (TIDY_APP_LIST.set == 1) {
+      bits = TIDY_APP_LIST.apps;
+      if (p.getUInt("apps", 0) != bits || !p.isKey("apps")) p.putUInt("apps", bits);
+    } else bits = p.getUInt("apps", 0xFFFFFFFFu);
+    p.end();
+  } else if (TIDY_APP_LIST.set == 1) bits = TIDY_APP_LIST.apps;
+  bits |= 1u << 18;
+  s_appBits = bits;
+  NICONS = 0;
+  for (auto & ic : ALL_ICONS)
+    if (bits & (1u << ic.bit)) ICONS[NICONS++] = ic;
+  Serial.printf("[TidyOS] %d apps on the desktop (list %08x%s)\n", NICONS, (unsigned)bits, TIDY_APP_LIST.set == 1 ? ", from the flasher" : "");
+}
 
 static std::string s_bootNote;              // shown once on the desktop (update result)
 
@@ -586,7 +635,8 @@ void oledBegin();   // oled.cpp
 class Desktop : public uiControl {
 public:
   static const int BAR_H = 20;
-  static const int CELL_W = 80, CELL_H = 72, X0 = 6, Y0 = 6, COLS = 4;   // 4 columns: 20+ icons fit
+  static const int CELL_W = 80, X0 = 6, COLS = 4;   // 4 columns: 24 icons fit, up to 32 with shorter rows
+  int CELL_H = 72, Y0 = 6;
 
   Desktop(uiWindow * parent) : uiControl(parent, Point(0, 0), Size(SCREEN_W, SCREEN_H), true, 0) {
     windowStyle().borderSize = 0;
@@ -722,6 +772,7 @@ private:
   std::string m_hintSig;
 
   Rect iconRect(int i) {
+    if (NICONS > 24) { CELL_H = 57; Y0 = 4; } else { CELL_H = 72; Y0 = 6; }
     int col = i % COLS, row = i / COLS;
     int x = X0 + col * CELL_W, y = Y0 + row * CELL_H;
     return Rect(x, y, x + CELL_W - 1, y + CELL_H - 1);
@@ -755,12 +806,12 @@ private:
     } else {
       cv->setBrushColor(T.text);
       cv->fillRectangle(ix + 2, iy + 2, ix + 33, iy + 33);
-      cv->setBrushColor(i == 4 ? T.good : T.accent);
+      cv->setBrushColor(!strcmp(ic.glyph, "$") ? T.good : T.accent);
       cv->fillRectangle(ix + 4, iy + 4, ix + 31, iy + 31);
       auto f = strlen(ic.glyph) > 1 ? &FONT_std_14 : &FONT_std_24;
       int w = cv->textExtent(f, ic.glyph);
       cv->setPenColor(T.accentText);
-      cv->setBrushColor(i == 4 ? T.good : T.accent);
+      cv->setBrushColor(!strcmp(ic.glyph, "$") ? T.good : T.accent);
       cv->drawText(f, ix + 18 - w / 2, iy + 18 - f->height / 2, ic.glyph);
     }
     if (ic.open == openMessages) {
@@ -1610,6 +1661,7 @@ void setup()
 #endif
 
   settingsLoad();
+  chooseDeskApps();       // which apps go on the desktop (picked in the web flasher)
   ledSetOn(gSet.ledOn);   // ledBegin ran before the settings were read, so the switch looked "off" to it
 
   bool updMode = updateModeRequested();

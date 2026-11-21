@@ -16,8 +16,16 @@
       "tidyos": {
         "path": "firmware/tidyos-pro-v4.bin",
         "offset": 524288,
-        "size": 2712320,
-        "slot": 3145728
+        "size": 2713136,
+        "slot": 3145728,
+        "appList": 1378372
+      },
+      "tidyosFull": {
+        "path": "firmware/tidyos-pro-v4-full.bin",
+        "offset": 524288,
+        "size": 2999904,
+        "slot": 3145728,
+        "appList": 1555024
       },
       "shelf": {
         "path": "firmware/parts/v4/shelf.bin",
@@ -47,8 +55,16 @@
       "tidyos": {
         "path": "firmware/tidyos-pro-v4-r8.bin",
         "offset": 524288,
-        "size": 2713328,
-        "slot": 3145728
+        "size": 2714144,
+        "slot": 3145728,
+        "appList": 1378308
+      },
+      "tidyosFull": {
+        "path": "firmware/tidyos-pro-v4-r8-full.bin",
+        "offset": 524288,
+        "size": 3000912,
+        "slot": 3145728,
+        "appList": 1554976
       },
       "shelf": {
         "path": "firmware/parts/v4-r8/shelf.bin",
@@ -63,5 +79,231 @@
         "slot": 2097152
       }
     }
-  }
+  },
+  "apps": [
+    {
+      "name": "RF Sweep",
+      "bit": 0,
+      "group": "field",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "Meter Traffic",
+      "bit": 1,
+      "group": "field",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "Site Survey",
+      "bit": 2,
+      "group": "field",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "RF Exposure",
+      "bit": 3,
+      "group": "field",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "GPS",
+      "bit": 4,
+      "group": "field",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "Clone",
+      "bit": 5,
+      "group": "field",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "Wi-Fi Scan",
+      "bit": 6,
+      "group": "field",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "Tidy",
+      "bit": 9,
+      "group": "core",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "Neat",
+      "bit": 10,
+      "group": "core",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "Files",
+      "bit": 11,
+      "group": "core",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "Calculator",
+      "bit": 12,
+      "group": "core",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "Browser",
+      "bit": 13,
+      "group": "core",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "Messages",
+      "bit": 14,
+      "group": "core",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "Clock",
+      "bit": 15,
+      "group": "core",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "Nic Sweep",
+      "bit": 7,
+      "group": "core",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "Ping",
+      "bit": 8,
+      "group": "core",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "Screenshot",
+      "bit": 16,
+      "group": "core",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "Git-Store",
+      "bit": 17,
+      "group": "core",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "Task Manager",
+      "bit": 19,
+      "group": "core",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "Switches",
+      "bit": 20,
+      "group": "core",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "The Shelf",
+      "bit": 21,
+      "group": "core",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "Settings",
+      "bit": 18,
+      "group": "core",
+      "full": 0,
+      "kb": 0
+    },
+    {
+      "name": "Ready",
+      "bit": 22,
+      "group": "extra",
+      "full": 1,
+      "kb": 4
+    },
+    {
+      "name": "Steady",
+      "bit": 23,
+      "group": "extra",
+      "full": 1,
+      "kb": 8
+    },
+    {
+      "name": "Rugged",
+      "bit": 24,
+      "group": "extra",
+      "full": 1,
+      "kb": 171
+    },
+    {
+      "name": "Latch",
+      "bit": 29,
+      "group": "extra",
+      "full": 1,
+      "kb": 30
+    },
+    {
+      "name": "Games",
+      "bit": 25,
+      "group": "extra",
+      "full": 1,
+      "kb": 51
+    },
+    {
+      "name": "Doodle",
+      "bit": 26,
+      "group": "extra",
+      "full": 1,
+      "kb": 11
+    },
+    {
+      "name": "Pictures",
+      "bit": 27,
+      "group": "extra",
+      "full": 1,
+      "kb": 1
+    },
+    {
+      "name": "Music",
+      "bit": 28,
+      "group": "extra",
+      "full": 1,
+      "kb": 1
+    },
+    {
+      "name": "HTML Games",
+      "bit": 30,
+      "group": "extra",
+      "full": 1,
+      "kb": 1
+    },
+    {
+      "name": "HTML Programs",
+      "bit": 31,
+      "group": "extra",
+      "full": 1,
+      "kb": 1
+    }
+  ]
 }
