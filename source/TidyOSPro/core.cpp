@@ -261,7 +261,8 @@ bool storageFree(int64_t & freeB, bool & sd)
 }
 
 static int s_clockX = 0;                  // where the bar's clock starts (it moves with the seconds)
-static Rect s_optBtn;             // the Optimize button after it
+static Rect s_optBtn;             // the Optimize button (before the RAM text)
+static int s_ramEnd = 0;          // where the RAM text ends
 static std::string s_optMsg;      // what Optimize did (shown for a few seconds)
 static uint32_t s_optUntil = 0;
 static void optimizeRam()
@@ -864,7 +865,7 @@ private:
   // where the minimized windows' buttons go: after the RAM text, before the clock
   void taskSlots(Canvas * cv, const char * ramText, int & x1, int & x2, std::vector<Rect> & out) {
     int by = SCREEN_H - BAR_H;
-    x1 = s_optBtn.X2 > 0 ? s_optBtn.X2 + 8 : s_ramX + cv->textExtent(&FONT_std_12, ramText) + 10;
+    x1 = s_ramX + cv->textExtent(&FONT_std_12, ramText) + 10;
     x2 = (s_clockX > 0 ? s_clockX : SCREEN_W - cv->textExtent(&FONT_std_14, "12:00 PM")) - 16;
     int n = s_minimized.size();
     if (!n || x2 - x1 < 30) return;
@@ -1009,11 +1010,8 @@ private:
       cv->drawText(&FONT_std_12, x, ty(&FONT_std_12), b);
       x += cv->textExtent(&FONT_std_12, b) + 8;
       divider(x); x += 8;
-      s_ramX = x;
-      strlcpy(b, ramText().c_str(), sizeof(b));
-      cv->drawText(&FONT_std_12, x, ty(&FONT_std_12), b);
-      {                                                   // Optimize button
-        int ox = x + cv->textExtent(&FONT_std_12, b) + 8, ow = cv->textExtent(&FONT_std_12, "Optimize") + 10;
+      {                                                   // Optimize button, then the RAM / storage figures after it
+        int ox = x, ow = cv->textExtent(&FONT_std_12, "Optimize") + 10;
         s_optBtn = Rect(ox, by + 3, ox + ow, SCREEN_H - 3);
         cv->setBrushColor(T.win);
         cv->fillRectangle(s_optBtn.X1, s_optBtn.Y1, s_optBtn.X2, s_optBtn.Y2);
@@ -1022,7 +1020,12 @@ private:
         cv->setPenColor(T.text);
         cv->drawText(&FONT_std_12, ox + 5, ty(&FONT_std_12), "Optimize");
         cv->setBrushColor(T.face);
+        x = s_optBtn.X2 + 8;
       }
+      s_ramX = x;
+      strlcpy(b, ramText().c_str(), sizeof(b));
+      cv->drawText(&FONT_std_12, x, ty(&FONT_std_12), b);
+      s_ramEnd = x + cv->textExtent(&FONT_std_12, b);
       // minimized windows
       {
         int x1, x2; std::vector<Rect> slots;
@@ -1052,7 +1055,7 @@ private:
         snprintf(hs, sizeof(hs), "%d", h); snprintf(ms, sizeof(ms), "%02d", tmv.tm_min);
         snprintf(ss, sizeof(ss), "%02d", tmv.tm_sec); snprintf(ap, sizeof(ap), " %s", tmv.tm_hour < 12 ? "AM" : "PM");
         int cw = cv->textExtent(f, ":"), dw = cv->textExtent(f, "00");
-        int left = s_optBtn.X2 > 0 ? s_optBtn.X2 + 10 : SCREEN_W / 2;
+        int left = s_ramEnd > 0 ? s_ramEnd + 10 : SCREEN_W / 2;
         int wSec = cv->textExtent(f, "12") + cw + dw + cw + dw + cv->textExtent(f, " PM");
         bool secs = SCREEN_W - 8 - wSec >= left + (int)s_minimized.size() * 30;
         int w = cv->textExtent(f, hs) + cw + dw + (secs ? cw + dw : 0) + cv->textExtent(f, ap);

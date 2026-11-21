@@ -26,7 +26,10 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.2.0. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.2.1. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.2.1
+- Bottom bar: the Optimize button now sits in front of the RAM figures.
 
 ### 3.2.0
 - **The crash is found**: FabGL's drawing task (it draws every window, line and letter of the desktop) had a
