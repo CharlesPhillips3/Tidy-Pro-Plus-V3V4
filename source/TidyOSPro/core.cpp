@@ -110,14 +110,89 @@ void settingsSave()
 std::string dataPath(const char * name)
 {
   if (gSDMounted) return std::string(SD_MOUNT "/tidyos/") + name;
-  return std::string(FLASH_MOUNT "/") + name;
+  return std::string(FLASH_HOME "/") + name;
 }
 
 std::string documentsDir()
 {
   if (gSDMounted) return SD_MOUNT "/Documents";
-  return FLASH_MOUNT;
+  return FLASH_HOME;
 }
+
+// ---- the board's own storage (no SD card)
+// V4: the 7.4 MB "ffat" area (FAT), shared with The Shelf, mounted at /flash; TidyOS Pro's files in /flash/TidyPro.
+// The first time, anything in the old 1 MB "tidyfs" area is copied over. If the FAT area won't open, the old
+// 1 MB area is used as before.
+static bool s_flashIsFat = false;
+#ifdef TIDYOS_V4
+#include "esp_spiffs.h"
+static void copyTree(const std::string & from, const std::string & to, int & files, int depth = 0)
+{
+  DIR * d = opendir(from.c_str());
+  if (!d) return;
+  mkdir(to.c_str(), 0777);
+  struct dirent * e;
+  while ((e = readdir(d)) != nullptr) {
+    std::string n = e->d_name;
+    if (n == "." || n == "..") continue;
+    std::string src = from + "/" + n, dst = to + "/" + n;
+    if (e->d_type == DT_DIR) { if (depth < 6) copyTree(src, dst, files, depth + 1); continue; }
+    for (size_t k = to.size() + 1; (k = dst.find('/', k)) != std::string::npos; ++k) mkdir(dst.substr(0, k).c_str(), 0777);   // SPIFFS names can hold "/"
+    struct stat st;
+    if (stat(dst.c_str(), &st) == 0) continue;                // already there: keep the newer one
+    FILE * a = fopen(src.c_str(), "rb"), * b = a ? fopen(dst.c_str(), "wb") : nullptr;
+    if (a && b) { static uint8_t buf[2048]; size_t r; while ((r = fread(buf, 1, sizeof(buf), a)) > 0) fwrite(buf, 1, r, b); ++files; }
+    if (b) fclose(b);
+    if (a) fclose(a);
+  }
+  closedir(d);
+}
+static void moveOldFlash()
+{
+  Preferences p;
+  if (!p.begin("tidyplus", false)) return;
+  if (p.getBool("moved", false)) { p.end(); return; }
+  esp_vfs_spiffs_conf_t c = { "/oldfl", "tidyfs", 4, false };
+  int files = 0;
+  if (esp_vfs_spiffs_register(&c) == ESP_OK) {
+    copyTree("/oldfl", FLASH_HOME, files);
+    esp_vfs_spiffs_unregister("tidyfs");
+  }
+  Serial.printf("[TidyOS] moved %d file(s) from the old 1 MB area to the board's storage\n", files);
+  p.putBool("moved", true);
+  p.end();
+}
+#endif
+bool mountInternal()
+{
+#ifdef TIDYOS_V4
+  bool ok = FFat.begin(false, FLASH_MOUNT, 4, "ffat");
+  if (!ok) {                                                  // never set up (nothing on it to lose)
+    Serial.println("[TidyOS] setting up the board's storage (first time)");
+    ok = FFat.format(false, (char *)"ffat") && FFat.begin(false, FLASH_MOUNT, 4, "ffat");
+  }
+  if (ok) {
+    s_flashIsFat = true;
+    mkdir(FLASH_HOME, 0777);
+    moveOldFlash();
+    Serial.printf("[TidyOS] board storage: %u KB free of %u KB (shared with The Shelf)\n", (unsigned)((FFat.totalBytes() - FFat.usedBytes()) / 1024), (unsigned)(FFat.totalBytes() / 1024));
+    return true;
+  }
+  Serial.println("[TidyOS] the board's storage won't open - using the old 1 MB area");
+#endif
+  s_flashIsFat = false;
+  return FileBrowser::mountSPIFFS(true, FLASH_MOUNT, 2);
+}
+// size of the board's storage (whichever is in use)
+bool internalFSInfo(int64_t & total, int64_t & used)
+{
+  if (!gFlashMounted) return false;
+#ifdef TIDYOS_V4
+  if (s_flashIsFat) { total = FFat.totalBytes(); used = FFat.usedBytes(); return true; }
+#endif
+  return FileBrowser::getFSInfo(fabgl::DriveType::SPIFFS, 0, &total, &used);
+}
+bool internalIsShared() { return s_flashIsFat; }
 
 bool readFileStr(const char * path, std::string & out, size_t maxLen)
 {
@@ -256,7 +331,7 @@ bool storageFree(int64_t & freeB, bool & sd)
 {
   int64_t total = 0, used = 0;
   if (gSDMounted && FileBrowser::getFSInfo(fabgl::DriveType::SDCard, 0, &total, &used)) { freeB = total - used; sd = true; return true; }
-  if (gFlashMounted && FileBrowser::getFSInfo(fabgl::DriveType::SPIFFS, 0, &total, &used)) { freeB = total - used; sd = false; return true; }
+  if (internalFSInfo(total, used)) { freeB = total - used; sd = false; return true; }
   return false;
 }
 
@@ -1226,7 +1301,7 @@ void sdTurnOff()
     gSDWiring = "none";
     Serial.println("[TidyOS] SD card turned off");
   }
-  if (!gFlashMounted) gFlashMounted = FileBrowser::mountSPIFFS(true, FLASH_MOUNT, 2);
+  if (!gFlashMounted) gFlashMounted = mountInternal();
 }
 
 #ifdef TIDYOS_HTML5
@@ -1699,17 +1774,19 @@ static void checkUpdateNote()
     Preferences p;
     if (p.begin("tidyupd", false) && p.getBool("inffat", false)) {
       p.remove("inffat");
-      if (FFat.begin(false, "/ffat", 2, "ffat")) {
+      bool already = s_flashIsFat && gFlashMounted;         // TidyOS's own storage is this same area
+      if (already || FFat.begin(false, "/ffat", 2, "ffat")) {
+        std::string base = already ? FLASH_MOUNT : "/ffat";
         if (FFat.exists("/tidyos/update.bin")) {          // still there: the boot menu didn't install it
           std::string ver;
-          readFileStr("/ffat/tidyos/update.ver", ver, 40);
+          readFileStr((base + "/tidyos/update.ver").c_str(), ver, 40);
           while (!ver.empty() && (ver.back() == '\n' || ver.back() == ' ')) ver.pop_back();
           if (ver != TIDYOS_VERSION && s_bootNote.empty())
             s_bootNote = "An update was downloaded but the boot menu didn't install it. Install the boot menu from the web flasher once, then try again.";
           FFat.remove("/tidyos/update.bin");
         }
         FFat.remove("/tidyos/update.sha"); FFat.remove("/tidyos/update.ver");
-        FFat.end();
+        if (!already) FFat.end();
       }
     }
     p.end();
@@ -1838,7 +1915,7 @@ void setup()
   barStart();
   splash(gSDMounted ? "SD card found" : gSet.sdOn ? "No SD card - preparing internal storage..." : "Preparing internal storage...", 30);
 
-  if (!gSDMounted) gFlashMounted = FileBrowser::mountSPIFFS(true, FLASH_MOUNT, 2);
+  if (!gSDMounted) gFlashMounted = mountInternal();
   memLog("display + storage");
   checkUpdateNote();
   makeDirs();

@@ -34,6 +34,8 @@ extern Theme T;
 extern int  gColors;        // 4, 8 or 16 colours actually running
 extern bool gSDMounted;
 extern bool gFlashMounted;
+bool internalFSInfo(int64_t & total, int64_t & used);   // the board's own storage (no SD card)
+bool internalIsShared();                                 // V4: the 7.4 MB area shared with The Shelf
 
 void themeSetup(fabgl::BitmappedDisplayController * dc, int colors);
 fabgl::uiStyle * themeStyle();

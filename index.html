@@ -151,8 +151,8 @@ details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var
         <h3 class="pk-h">Clean up</h3>
         <label class="row"><input type="checkbox" id="c-clear" checked><span class="sw hatch"></span><span class="nm">Empty the slots I didn't tick<small>So an old copy isn't left behind and the boot menu doesn't offer it</small></span><span class="sz"></span></label>
         <label class="row"><input type="checkbox" id="c-wnvs"><span class="sw" style="--c:var(--bad)"></span><span class="nm">Forget Wi-Fi and settings<small>Otherwise they're kept</small></span><span class="sz">20 KB</span></label>
-        <label class="row"><input type="checkbox" id="c-wtfs"><span class="sw" style="--c:var(--bad)"></span><span class="nm">Wipe TidyOS Pro's on-board files<small>Not the microSD card</small></span><span class="sz">1 MB</span></label>
-        <label class="row"><input type="checkbox" id="c-wfat"><span class="sw" style="--c:var(--bad)"></span><span class="nm">Wipe The Shelf's on-board files<small>Tick this the first time if the board had The Shelf on its own before</small></span><span class="sz">7.4 MB</span></label>
+        <input type="checkbox" id="c-wtfs" hidden>
+        <label class="row"><input type="checkbox" id="c-wfat"><span class="sw" style="--c:var(--bad)"></span><span class="nm">Wipe the board's file storage<small>TidyOS Pro's and The Shelf's files kept on the board (not the microSD card). Tick this the first time if the board had The Shelf on its own before.</small></span><span class="sz">7.4 MB</span></label>
       </div>
 
       <div class="pk-meter">
@@ -496,7 +496,7 @@ function plan() {
     else { empty += L[k].size; fill[k] = 0; }
   }
   const tidyThere = has('tidyos'), shelfThere = has('shelf');
-  const fsUse = { tidyfs: tidyThere, ffat: shelfThere };
+  const fsUse = { tidyfs: false, ffat: tidyThere || shelfThere };   // (3.3.0+: TidyOS Pro keeps its files in the shared area too)
   for (const k of ['tidyfs', 'ffat']) { if (fsUse[k]) files += L[k].size; else empty += L[k].size; }
   const system = L.sys.size + L.core.size;
   const free = FLASH - system - programs - kept;
@@ -533,17 +533,17 @@ function draw() {
     const t = r.st[k] === 'install' ? `${NAME[k]}: ${sz(r.P[k].size)} of a ${sz(L[k].size)} slot` : r.st[k] === 'kept' ? `${NAME[k]} slot: left as it is` : `${NAME[k]} slot: empty`;
     seg(k, t, COLOR[k], r.fill[k], r.st[k] === 'kept');
   }
-  seg('tidyfs', r.fsUse.tidyfs ? `TidyOS Pro's file storage: ${sz(L.tidyfs.size)}` : 'Unused', '--free', 0, false, r.fsUse.tidyfs);
-  seg('ffat', r.fsUse.ffat ? `The Shelf's file storage: ${sz(L.ffat.size)}` : 'Unused', '--free', 0, false, r.fsUse.ffat);
+  seg('tidyfs', 'Old 1 MB file area (its files are moved to the shared storage at the first start)', '--free', 0, false, false);
+  seg('ffat', r.fsUse.ffat ? `File storage (TidyOS Pro and The Shelf): ${sz(L.ffat.size)}` : 'Unused', '--free', 0, false, r.fsUse.ffat);
   seg('core', 'Crash log (64 KB)', '--c-sys', 1);
 
   // the big number: room for files, and who can use it (what's left in the program slots can't hold files)
-  const T = r.fsUse.tidyfs ? L.tidyfs.size : 0, S = r.fsUse.ffat ? L.ffat.size : 0;
-  $('m-free').textContent = sz(T + S);
-  $('m-freeLab').textContent = T || S ? 'room for your files' : 'no system to keep files';
-  $('m-freeSplit').innerHTML = [T && `TidyOS Pro: <b>${sz(T)}</b> for its files (the SD card adds more)`, S && `The Shelf: <b>${sz(S)}</b> for its files`].filter(Boolean).join('<br>') +
-    `<br>Unused flash in all: ${sz(r.free)} of 16 MB (some is spare room in the program slots for updates).`;
-  const fsBits = [r.fsUse.tidyfs && "TidyOS Pro 1 MB", r.fsUse.ffat && "The Shelf 7.4 MB"].filter(Boolean).join(', ');
+  // one shared area holds the files of TidyOS Pro (in its TidyPro folder) and The Shelf
+  const anyOs = r.tidyThere || r.shelfThere, who = [r.tidyThere && 'TidyOS Pro', r.shelfThere && 'The Shelf'].filter(Boolean).join(' and ');
+  $('m-free').textContent = anyOs ? sz(L.ffat.size) : '0';
+  $('m-freeLab').textContent = anyOs ? 'room for your files' : 'no system to keep files';
+  $('m-freeSplit').innerHTML = anyOs ? `One storage area for ${who}${r.tidyThere ? ' (TidyOS Pro keeps its files in a TidyPro folder there; a microSD card adds more)' : ''}.` : '';
+  const fsBits = r.fsUse.ffat ? 'shared by TidyOS Pro and The Shelf' : '';
   const copy = r.writes.reduce((n, w) => n + (w.size || 0), 0);
   const rows = [
     ['Programs being copied', sz(r.programs)],
@@ -561,7 +561,7 @@ function draw() {
   if (!on('boot')) notes.push('⚠ Bootloader unticked: only do this if the board already has Tidy Pro Plus / TidyOS Pro on it.');
   if (!on('menu')) notes.push('⚠ Boot menu unticked: the one already on the board is used. A new board needs it.');
   if (on('shelf') && !on('www')) notes.push('The Shelf needs its web app. Untick it only if the board already has one.');
-  if (r.files && !on('wtfs') && r.fsUse.tidyfs || r.files && !on('wfat') && r.fsUse.ffat) notes.push('Files already kept on the board stay, and use some of the room for files.');
+  if (r.files && !on('wfat') && r.fsUse.ffat) notes.push('Files already kept on the board stay, and use some of the room for files.');
   if (!r.writes.some(w => w.file || w.fill > 0x2000)) notes.push('Nothing to install yet: tick something.');
   $('m-note').innerHTML = notes.join('<br>');
   $('pkGo').textContent = r.writes.length ? `Install (${sz(copy)})` : 'Install';
@@ -589,7 +589,7 @@ $('pkGo').onclick = async () => {
   at = 'pk';
   let port;
   try { port = await pickPort(); } catch (e) { show(friendly(e)); return; }
-  if (!confirm(`Write these to the board?\n\n${list}${appsLine}\n\nRoom for files afterwards: ${[r.fsUse.tidyfs && 'TidyOS Pro ' + sz(L.tidyfs.size), r.fsUse.ffat && 'The Shelf ' + sz(L.ffat.size)].filter(Boolean).join(', ') || 'none'}. Back up first (step 1) if you might want the board as it is now.`)) return;
+  if (!confirm(`Write these to the board?\n\n${list}${appsLine}\n\nRoom for files afterwards: ${r.fsUse.ffat ? sz(L.ffat.size) + ' (shared by TidyOS Pro and The Shelf)' : 'none'}. Back up first (step 1) if you might want the board as it is now.`)) return;
   let c; busy(true);
   try {
     show('Downloading…', 0);

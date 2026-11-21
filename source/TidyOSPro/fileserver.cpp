@@ -172,7 +172,7 @@ static void listDir(WiFiClient & c, const std::string & path)
   int64_t total = 0, used = 0;
   if (path == "/") {
     if (gSDMounted)    { out += "{\"n\":\"SD\",\"d\":1,\"s\":0}"; first = false; }
-    if (gFlashMounted) { out += std::string(first ? "" : ",") + "{\"n\":\"flash\",\"d\":1,\"s\":0}"; }
+    if (gFlashMounted) { out += std::string(first ? "" : ",") + "{\"n\":\"" + std::string(FLASH_HOME).substr(1) + "\",\"d\":1,\"s\":0}"; }
   } else {
     if (!safePath(path)) { sendErr(c, 400, "Not allowed"); return; }
     DIR * d = opendir(path.c_str());
@@ -192,7 +192,8 @@ static void listDir(WiFiClient & c, const std::string & path)
       ++n;
     }
     closedir(d);
-    FileBrowser::getFSInfo(path.compare(0, 3, "/SD") == 0 ? fabgl::DriveType::SDCard : fabgl::DriveType::SPIFFS, 0, &total, &used);
+    if (path.compare(0, 3, "/SD") == 0) FileBrowser::getFSInfo(fabgl::DriveType::SDCard, 0, &total, &used);
+    else internalFSInfo(total, used);
   }
   out += "],\"total\":" + std::to_string((long long)total) + ",\"free\":" + std::to_string((long long)(total - used)) + "}";
   send(c, 200, "application/json", out);
@@ -315,7 +316,7 @@ static void handle(WiFiClient & c)
   else if (path == "/api/file" && method == "GET") sendFile(c, p, param(query, "dl") == "1");
   else if (path == "/api/file" && (method == "PUT" || method == "POST")) receiveFile(c, p, len);
   else if (path == "/api/delete" && method == "POST") {
-    if (!safePath(p) || p == "/SD" || p == "/flash") sendErr(c, 400, "Not allowed");
+    if (!safePath(p) || p == "/SD" || p == "/flash" || p == FLASH_HOME) sendErr(c, 400, "Not allowed");
     else if (remove(p.c_str()) == 0 || rmdir(p.c_str()) == 0) send(c, 200, "application/json", "{\"ok\":true}");
     else sendErr(c, 500, "Couldn't delete it (folders must be empty)");
   } else if (path == "/api/mkdir" && method == "POST") {

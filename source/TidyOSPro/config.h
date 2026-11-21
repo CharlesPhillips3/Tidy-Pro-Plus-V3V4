@@ -15,7 +15,7 @@
 // Git-Store: the Cloudflare relay every board uses unless one is typed in (see gitstore/README.md)
 #define TIDYOS_STORE_URL ""
 
-#define TIDYOS_VERSION "3.2.5"
+#define TIDYOS_VERSION "3.3.0"
 
 // Edition. The VGA edition draws on a monitor and uses Bluetooth keyboard + mouse.
 // The HTML5 edition shows the desktop in a web browser (keyboard + mouse come from the browser).
@@ -113,6 +113,13 @@
 
 #define SD_MOUNT     "/SD"
 #define FLASH_MOUNT  "/flash"
+// Tidy Pro Plus (V4): the board's storage is the 7.4 MB "ffat" area, shared with The Shelf; TidyOS Pro's
+// files live in its own folder there. (Classic ESP32: the SPIFFS area itself.)
+#ifdef TIDYOS_V4
+  #define FLASH_HOME FLASH_MOUNT "/TidyPro"
+#else
+  #define FLASH_HOME FLASH_MOUNT
+#endif
 
 // Screen
 #define SCREEN_W 640

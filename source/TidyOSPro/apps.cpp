@@ -107,7 +107,7 @@ public:
     windowStyle().focusedBorderColor = T.accent;
     windowProps().focusable = true;
   }
-  bool hasUp() { return dir != SD_MOUNT && dir != FLASH_MOUNT && dir.size() > 1; }
+  bool hasUp() { return dir != SD_MOUNT && dir != FLASH_MOUNT && dir != FLASH_HOME && dir.size() > 1; }
   int rows() { return imax(1, clientRect(uiOrigin::Window).height() / RH); }
   // entry i (".." first when there is a parent folder); streams the folder every time
   bool entry(int i, std::string & name, bool & isDir) {
@@ -1598,7 +1598,7 @@ public:
       updateInfo();
       if (twice) openSel();
     };
-    fl->setDir(gSDMounted ? SD_MOUNT : FLASH_MOUNT);
+    fl->setDir(gSDMounted ? SD_MOUNT : FLASH_HOME);
     int bx = cx + 328;
     button("Open",       bx, cy,       122)->onClick = [this]() { openSel(); };
     button("New folder", bx, cy + 28,  122)->onClick = [this]() { newFolder(); };
@@ -1677,7 +1677,7 @@ public:
       snprintf(b, sizeof(b), "%.50s   %ld bytes   (double-click or Open)", selName.c_str(), sz);
     } else if (!url.empty())
       snprintf(b, sizeof(b), "Sharing on Wi-Fi: open %s in a browser", url.c_str());
-    else if (FileBrowser::getFSInfo(sd ? DriveType::SDCard : DriveType::SPIFFS, 0, &total, &used))
+    else if (sd ? FileBrowser::getFSInfo(DriveType::SDCard, 0, &total, &used) : internalFSInfo(total, used))
       snprintf(b, sizeof(b), "%s   %lld MB free of %lld MB", fl->dir.c_str(), (total - used) >> 20, total >> 20);
     else
       snprintf(b, sizeof(b), "%s", fl->dir.c_str());
@@ -2895,8 +2895,8 @@ public:
       dirSize(SD_MOUNT "/tidyos", bytes, files);
       snprintf(b, sizeof(b), "  TidyOS data %d files, %s (lists, bills, messages, settings)", files, kb(bytes).c_str()); l.push_back(b);
     } else l.push_back(gSet.sdOn ? "  No SD card found (check the card and wiring)" : "  Switched off (Switches icon, or the start-up window)");
-    if (gFlashMounted && FileBrowser::getFSInfo(DriveType::SPIFFS, 0, &total, &used)) {
-      l.push_back(""); l.push_back("INTERNAL STORAGE (in use while the SD card is off or missing)");
+    if (internalFSInfo(total, used)) {
+      l.push_back(""); l.push_back(internalIsShared() ? "BOARD STORAGE (shared with The Shelf; TidyOS Pro's files are in TidyPro)" : "INTERNAL STORAGE (in use while the SD card is off or missing)");
       snprintf(b, sizeof(b), "  %s  %s used of %s", bar(total ? (double)used / total : 0).c_str(), kb(used).c_str(), kb(total).c_str()); l.push_back(b);
     }
     l.push_back("");

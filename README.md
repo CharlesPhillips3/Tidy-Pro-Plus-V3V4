@@ -26,7 +26,15 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.2.5. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.3.0. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.3.0
+- **One storage area, 7.4 MB instead of 1 MB.** With no SD card, TidyOS Pro now keeps its files in the board's big
+  `ffat` area, the same one The Shelf uses, in its own **TidyPro** folder so the two never mix. It's set up the first
+  time if it was never used. Anything in the old 1 MB area is copied over at the first start (once). The Files app,
+  the bottom bar, the OLED, Task Manager and the Wi-Fi file sharing all use it. If that area ever won't open,
+  TidyOS Pro falls back to the old 1 MB area.
+- Web flasher: "Wipe the board's file storage" covers both systems' files, and the big number shows the shared 7.4 MB.
 
 ### 3.2.5
 - Settings → Check for updates says the V4 needs no SD card (the old message was from the classic ESP32).
