@@ -26,7 +26,11 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.3.3. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.3.4. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.3.4
+- OLED Kp graph: a dotted line at each midnight with the day's name under it, "now" at the right end,
+  and "5" beside the dotted storm line.
 
 ### 3.3.3
 - Bottom bar logo much tighter: PRO right against "TidyOS", the blue just around the letters, a closer box.

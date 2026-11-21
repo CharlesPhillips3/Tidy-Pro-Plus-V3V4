@@ -180,23 +180,47 @@ static void pageSun()
   if (kp != -99999) { snprintf(b, sizeof(b), "  Kp %.1f", kp / 10.0); l += b; }
   if (s_d.xray[0]) { l += "  "; l += s_d.xray; }
   if (l.empty()) l = "Sun: looking it up";
-  fit(0, 18, l.c_str());
+  fit(0, 17, l.c_str());
   if (s_d.hfOk) {                                          // the six bands; Good ones in reverse
     static const char * BAND[6] = { "160", "80", "40", "20", "15", "10" };
     for (int i = 0; i < 6; ++i) {
-      int x = (i % 3) * 43, y = 28 + (i / 3) * 9;
+      int x = (i % 3) * 43, y = 26 + (i / 3) * 8;
       snprintf(b, sizeof(b), "%s %s", BAND[i], s_d.hf[i]);
       bool good = !strcmp(s_d.hf[i], "Good");
-      if (good) { s_oled.drawBox(x, y - 7, 42, 9); s_oled.setDrawColor(0); }
+      if (good) { s_oled.drawBox(x, y - 7, 42, 8); s_oled.setDrawColor(0); }
       fit(x + 1, y, b);
       s_oled.setDrawColor(1);
     }
   } else { s_oled.setFont(u8g2_font_6x12_tr); centre("HF: waiting for data", 36); s_oled.setFont(u8g2_font_5x8_tr); }
-  // Kp over 4 days, with a dotted storm line at 5, and what it is
+  // Kp over the last 4 days (one bar per 3 hours, newest on the right): "5" on the left marks
+  // the dotted storm line (Kp 5); a dotted line at each midnight with the day under it, and "now" at the end
   s_oled.setFont(u8g2_font_4x6_tr);
-  s_oled.drawStr(0, 45, "Kp last 4 days, dots = storm");
-  graph(s_d.kp, 0, 47, 128, 17, 0, 90, true);
-  for (int k = 1; k < 127; k += 3) s_oled.drawPixel(k, 47 + 17 - 2 - 50 * 14 / 90);
+  s_oled.drawStr(0, 41, "Kp last 4 days, dots = storm");
+  const int gx = 6, gy = 43, gw = 122, gh = 15;
+  graph(s_d.kp, gx, gy, gw, gh, 0, 90, true);
+  auto KY = [&](int kp10) { return gy + gh - 2 - kp10 * (gh - 3) / 90; };
+  s_oled.drawStr(0, KY(50) + 3, "5");                  // the storm line's level
+  for (int k = gx + 1; k < gx + gw - 1; k += 3) s_oled.drawPixel(k, KY(50));
+  int n = s_d.kp.n;
+  if (n > 1) {
+    time_t now = time(nullptr);
+    auto X = [&](int i) { return gx + 1 + i * (gw - 3) / (n - 1); };
+    static const char * DN[7] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+    int prevDay = -1, lastLabelEnd = -10;
+    for (int i = 0; i < n; ++i) {
+      time_t t = now - (time_t)(n - 1 - i) * 3 * 3600;
+      struct tm lt; localtime_r(&t, &lt);
+      if (prevDay != -1 && lt.tm_mday != prevDay) {                 // midnight: a dotted line and the new day's name
+        int lx = X(i) - 1;
+        for (int y = gy + 1; y < gy + gh - 1; y += 2) s_oled.drawPixel(lx, y);
+        const char * d = DN[lt.tm_wday % 7];
+        int tw = s_oled.getStrWidth(d), tx = lx + 2;
+        if (tx > lastLabelEnd + 2 && tx + tw < 128 - 14) { s_oled.drawStr(tx, 64, d); lastLabelEnd = tx + tw; }
+      }
+      prevDay = lt.tm_mday;
+    }
+    s_oled.drawStr(128 - s_oled.getStrWidth("now"), 64, "now");
+  }
 }
 
 static void pageStorms()
