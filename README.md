@@ -26,7 +26,12 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.3.4. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.3.5. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.3.5
+- **Updates say what they're doing.** In update mode the OLED shows each step (joining Wi-Fi, checking GitHub,
+  downloading with a progress bar, installing) and any error, and every step goes to the serial console as
+  `[update] ...`. If the update stops, the reason appears on the desktop after the restart ("Update: ...").
 
 ### 3.3.4
 - OLED Kp graph: a dotted line at each midnight with the day's name under it, "now" at the right end,

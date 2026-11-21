@@ -401,6 +401,36 @@ static void oledTask(void *)
   }
 }
 
+// update mode: no pages, just what the updater is doing (so it can be seen without a browser)
+static bool s_statusInit = false;
+void oledStatus(const char * msg, int pct)
+{
+  if (!s_statusInit) {
+#if CONFIG_SPIRAM_MODE_OCT
+    pinMode(PIN_VEXT_R8, OUTPUT); digitalWrite(PIN_VEXT_R8, LOW);
+#else
+    pinMode(PIN_VEXT, OUTPUT); digitalWrite(PIN_VEXT, LOW);
+#endif
+    delay(50);
+    s_oled.begin(); s_oled.setContrast(BRIGHT);
+    s_statusInit = true;
+  }
+  s_oled.clearBuffer();
+  s_oled.setFont(u8g2_font_5x8_tr);
+  s_oled.drawStr(0, 7, "UPDATE  TidyOS Pro " TIDYOS_VERSION);
+  s_oled.drawHLine(0, 9, 128);
+  // the message, wrapped over up to 4 lines
+  const char * m = msg; int y = 20;
+  while (*m && y <= 50) {
+    int n = strlen(m); if (n > 25) { n = 25; while (n > 8 && m[n] != ' ') --n; }
+    char line[32]; snprintf(line, sizeof(line), "%.*s", n, m);
+    s_oled.drawStr(0, y, line); y += 10;
+    m += n; while (*m == ' ') ++m;
+  }
+  if (pct > 0) { s_oled.drawFrame(0, 56, 128, 8); s_oled.drawBox(2, 58, (pct > 100 ? 100 : pct) * 124 / 100, 4); }
+  s_oled.sendBuffer();
+}
+
 void oledBegin()
 {
 #if CONFIG_SPIRAM_MODE_OCT
@@ -416,4 +446,5 @@ void oledBegin()
 }
 #else
 void oledBegin() {}
+void oledStatus(const char *, int) {}
 #endif

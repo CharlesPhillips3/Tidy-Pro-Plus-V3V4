@@ -303,6 +303,9 @@ static void finish(void (*status)(const char *, int), const char * msg, int pct,
 {
   Serial.printf("[update] %s\n", msg);
   status(msg, pct);
+  if (strncmp(msg, "Installing ", 11) != 0) {                // the next start shows this on the desktop
+    Preferences p; if (p.begin("tidyupd", false)) { p.putString("res", msg); p.end(); }
+  }
   delay(waitMs);
   ESP.restart();
 }
