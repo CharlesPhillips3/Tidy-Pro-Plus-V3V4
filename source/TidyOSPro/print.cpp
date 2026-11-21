@@ -440,7 +440,7 @@ static void startJob(int kind)
   setMsg("");
   s_jobKind  = kind;
   s_jobState = 1;
-  if (xTaskCreatePinnedToCore(jobTask, "print", 8192, nullptr, 2, nullptr, 0) != pdPASS) {
+  if (xTaskCreatePinnedToCore(jobTask, "print", 12288, nullptr, 2, nullptr, 0) != pdPASS) {
     setMsg("Out of memory");
     s_jobState = 3;
   }
@@ -526,7 +526,7 @@ void printDialog(const PrintDoc & doc)
     if (s_finding || !netConnected()) return;
     s_finding = true;
     setStatus("Looking for printers on your Wi-Fi...");
-    xTaskCreatePinnedToCore(findTask, "findprn", 6144, nullptr, 1, nullptr, 0);
+    xTaskCreatePinnedToCore(findTask, "findprn", 8192, nullptr, 1, nullptr, 0);
   };
   printBtn->onClick = [=]() {
     int i = list->firstSelectedItem();

@@ -2574,7 +2574,7 @@ static const char * taskInfo(const char * n)
     { "cputest0", "CPU test (core 0)" }, { "cputest1", "CPU test (core 1)" }, { "keyrep", "Key repeat" }, { "serkbd", "Serial keyboard" }, { "wifi", "Wi-Fi driver" }, { "tiT", "TCP/IP network" },
     { "sys_evt", "System events" }, { "esp_timer", "System timers" }, { "Tmr Svc", "Timer service" }, { "ipc0", "Core 0 helper" },
     { "ipc1", "Core 1 helper" }, { "shelfmsg", "Shelf messaging + mesh" }, { "fileweb", "File sharing server" },
-    { "fetch", "Browser download" }, { "led", "Blue status light" }, { "print", "Printing" }, { "findprn", "Printer search" }, { "mdns", ".local name" },
+    { "fetch", "Browser download" }, { "led", "Status light" }, { "print", "Printing" }, { "findprn", "Printer search" }, { "mdns", ".local name" },
     { "ping", "Router ping" }, { "msgadd", "Shelf lookup" }, { "FabGL", "Screen drawing" },
   };
   for (auto & m : map) if (!strcmp(m[0], n)) return m[1];
@@ -2914,7 +2914,7 @@ public:
     snprintf(b, sizeof(b), "  Screen      %s  (640x480, %d colours)", kb(fb).c_str(), gColors); l.push_back(b);
     snprintf(b, sizeof(b), "  Free        %s   biggest piece %s   lowest ever %s", kb(fr).c_str(), kb(ramBiggest()).c_str(), kb(ramLowest()).c_str()); l.push_back(b);
     snprintf(b, sizeof(b), "  DMA-able    %s free", kb(heap_caps_get_free_size(MALLOC_CAP_DMA)).c_str()); l.push_back(b);
-    l.push_back("  Extra RAM   none (this board has no PSRAM)");
+    { size_t ps = heap_caps_get_total_size(MALLOC_CAP_SPIRAM); if (ps) { snprintf(b, sizeof(b), "  PSRAM       %s free of %s", kb(heap_caps_get_free_size(MALLOC_CAP_SPIRAM)).c_str(), kb(ps).c_str()); l.push_back(b); } else l.push_back("  Extra RAM   none (this board has no PSRAM)"); }
     setLinesKeep(storeView, std::move(l));
   }
 
@@ -3222,7 +3222,7 @@ public:
     if (!netConnected()) { gApp->messageBox("Ping", "Join a Wi-Fi network first (Settings).", "OK", nullptr, nullptr, uiMessageBoxIcon::Warning); return; }
     s_pRun = true; s_pTaskAlive = true;
     { std::lock_guard<std::mutex> lk(s_pmx); plog("--- started ---"); s_pChanged++; }
-    xTaskCreatePinnedToCore(pingTask, "ping", 4096, nullptr, 1, nullptr, 0);
+    xTaskCreatePinnedToCore(pingTask, "ping", 6144, nullptr, 1, nullptr, 0);
     refresh(true);
   }
 
@@ -3290,7 +3290,7 @@ void openPing()
 // is short of RAM. Remembered after a restart.
 //   SD card        ~23 KB  (card driver + file system). Off: files go to internal flash.
 //   Wireless mesh  a few KB (ESP-NOW for The Shelf's Coms mesh)
-//   Blue light     ~2 KB   (the little task that fades it)
+//   Status light   ~2 KB   (the little task that fades it)
 
 #include "led.h"
 
@@ -3302,7 +3302,7 @@ public:
   uiLabel  * sdInfo, * mem;
 
   SwitchesApp() : AppFrame("Switches", Point(110, 50), Size(420, 360), &inst) {
-    static const char * names[3] = { "SD card", "Wireless mesh", "Blue light" };
+    static const char * names[3] = { "SD card", "Wireless mesh", "Status light" };
     for (int i = 0; i < 3; ++i) {
       int y = cy + 4 + i * 96;
       auto l = label(names[i], cx + 4, y + 8, 150, 24);
@@ -3375,7 +3375,7 @@ public:
     if (gSet.meshOn && !msgStarted()) set(note[1], "Starts once TidyOS is on your home Wi-Fi. Coms boards nearby.");
     else set(note[1], gSet.meshOn ? "Talking with Coms boards nearby (2.4 GHz). Uses a few KB." : "Off: no Coms mesh. Shelf messages on Wi-Fi still work.");
     show(2, gSet.ledOn, "ON", "OFF");
-    set(note[2], gSet.ledOn ? "Breathing = ready, flicker = SD card busy. Uses ~2 KB." : "Off: the blue LED stays dark. Saves ~2 KB.");
+    set(note[2], gSet.ledOn ? "Breathing = ready, flicker = SD card busy. Uses ~2 KB." : "Off: the white LED stays dark. Saves ~2 KB.");
     char b[80];
     snprintf(b, sizeof(b), "Free memory now: %u KB   (switches are remembered)", (unsigned)(ramFree() / 1024));
     set(mem, b);

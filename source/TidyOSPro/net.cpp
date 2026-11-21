@@ -645,7 +645,7 @@ void fetchStart(const std::string & url)
   s_url    = url;
   s_result.clear();
   s_state  = FETCH_BUSY;
-  if (xTaskCreatePinnedToCore(fetchTask, "fetch", 8192, nullptr, 2, nullptr, 0) != pdPASS) {
+  if (xTaskCreatePinnedToCore(fetchTask, "fetch", 12288, nullptr, 2, nullptr, 0) != pdPASS) {
     s_result = "Out of memory";
     s_state  = FETCH_ERROR;
   }

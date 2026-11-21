@@ -1,5 +1,6 @@
-// TidyOS: the blue LED (GPIO 2 on NodeMCU-32S / DevKitC boards) as a status light, like The Shelf.
-// The red LED next to it is the power light and can't be switched.
+// TidyOS: the board's LED as a status light, like The Shelf.
+// Heltec V4: the white LED on GPIO 35. (GPIO 2 - the NodeMCU's blue LED - is the V4's radio
+// front-end enable, so it must not be touched here.) V4-R8: GPIO 35 belongs to its PSRAM, so no light.
 //   starting up           slow blink (half a second on, half off)
 //   ready                 breathing: a slow, smooth fade in and out (~4 s a breath)
 //   microSD card busy     a quick flicker while the card is read or written
@@ -9,12 +10,20 @@
 #include "led.h"
 #include "crashlog.h"
 #include "core.h"
-#define LED_PIN 2
+#include "config.h"
+#if defined(TIDYOS_V4) && CONFIG_SPIRAM_MODE_OCT
+  #define LED_PIN -1              // V4-R8: no LED the program may use
+#elif defined(TIDYOS_V4)
+  #define LED_PIN PIN_LED         // V4: white LED, GPIO 35
+#else
+  #define LED_PIN 2
+#endif
 #define LED_CH  7                 // LEDC (PWM) channel 7: nothing else in TidyOS uses LEDC
 
 static bool s_pwm = false;
 static inline void ledLevel(uint32_t v)      // 0 = off .. 255 = full
 {
+  if (LED_PIN < 0) return;
 #ifdef TIDYOS_HTML5
   if (s_pwm) ledcWrite(LED_CH, v);
   else
@@ -65,6 +74,7 @@ static void ledTask(void * arg) { ledTaskBody(arg); vTaskDelete(nullptr); }
 
 void ledBegin()
 {
+  if (LED_PIN < 0) { Serial.println("[TidyOS] status light: none on this board"); return; }
   pinMode(LED_PIN, OUTPUT);
   digitalWrite(LED_PIN, LOW);
 #ifdef TIDYOS_HTML5
@@ -72,7 +82,7 @@ void ledBegin()
   if (s_pwm) ledcAttachPin(LED_PIN, LED_CH);
 #endif                                            // the monitor edition has no IRAM to spare for it: on / off
   ledLevel(0);
-  Serial.printf("[TidyOS] blue light on GPIO %d (%s), switch %s\n", LED_PIN, s_pwm ? "PWM" : "on/off", gSet.ledOn ? "on" : "off");
+  Serial.printf("[TidyOS] status light on GPIO %d (%s), switch %s\n", LED_PIN, s_pwm ? "PWM" : "on/off", gSet.ledOn ? "on" : "off");
   ledSetOn(gSet.ledOn);
 }
 
@@ -80,9 +90,10 @@ void ledBegin()
 void ledSetOn(bool on)
 {
   s_wanted = on;
+  if (LED_PIN < 0) return;
   if (on && !s_running) {
     s_running = true;
-    if (xTaskCreatePinnedToCore(ledTask, "led", 2048, nullptr, 1, nullptr, 0) != pdPASS) s_running = false;
+    if (xTaskCreatePinnedToCore(ledTask, "led", 4096, nullptr, 1, nullptr, 0) != pdPASS) s_running = false;
   }
   if (!on && !s_running) ledLevel(0);
 }

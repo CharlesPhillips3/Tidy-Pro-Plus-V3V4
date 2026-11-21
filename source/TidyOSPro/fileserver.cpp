@@ -366,7 +366,7 @@ void fileServerSet(bool on)
   if (gSet.fileShare != on) { gSet.fileShare = on; settingsSave(); }
   if (on && !s_taskStarted) {
     s_taskStarted = true;
-    xTaskCreatePinnedToCore(serverTask, "fileweb", 6144, nullptr, 1, nullptr, 0);
+    xTaskCreatePinnedToCore(serverTask, "fileweb", 10240, nullptr, 1, nullptr, 0);
   }
 }
 
@@ -378,7 +378,7 @@ void fileServerMedia(bool on)
   if (on) s_lastUse = millis();
   if (on && !s_taskStarted) {
     s_taskStarted = true;
-    xTaskCreatePinnedToCore(serverTask, "fileweb", 6144, nullptr, 1, nullptr, 0);
+    xTaskCreatePinnedToCore(serverTask, "fileweb", 10240, nullptr, 1, nullptr, 0);
   }
 }
 

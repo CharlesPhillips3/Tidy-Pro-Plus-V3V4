@@ -760,7 +760,7 @@ void screenBegin()
   static bool started = false;
   if (started) return;
   started = true;
-  xTaskCreatePinnedToCore(screenTask, "screen", 6144, nullptr, 2, nullptr, 0);
+  xTaskCreatePinnedToCore(screenTask, "screen", 12288, nullptr, 2, nullptr, 0);
 }
 
 bool screenViewer() { return s_view; }

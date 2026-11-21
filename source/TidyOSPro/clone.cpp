@@ -272,7 +272,7 @@ bool start(bool withShelf, bool autoPins)
 {
   if (gBusy) return false;
   Job * j = new Job{ withShelf, autoPins };
-  return xTaskCreatePinnedToCore(cloneTask, "clone", 8192, j, 1, nullptr, 0) == pdPASS;
+  return xTaskCreatePinnedToCore(cloneTask, "clone", 10240, j, 1, nullptr, 0) == pdPASS;
 }
 
 bool shelfInstalled()

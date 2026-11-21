@@ -1,4 +1,4 @@
-// TidyOS status light on the blue LED (GPIO 2)
+// TidyOS status light (Heltec V4: the white LED on GPIO 35)
 #pragma once
 #include <stdint.h>
 void ledBegin();      // start blinking (call first thing in setup)

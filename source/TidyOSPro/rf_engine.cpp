@@ -255,7 +255,7 @@ bool begin()
   }
   clearStats();
   gSpec->noiseFloor = -110;
-  if (s_ok) xTaskCreatePinnedToCore(radioTask, "rf", 6144, nullptr, 1, &s_task, 0);
+  if (s_ok) xTaskCreatePinnedToCore(radioTask, "rf", 10240, nullptr, 1, &s_task, 0);
   return s_ok;
 }
 
@@ -411,7 +411,7 @@ bool gnssStart()
       gGnss.present = true; gGnss.baud = c[0]; gGnss.rxPin = c[1];
       s_gnssState = 1;
       Serial.printf("[TidyOS Pro] GNSS found: %d baud, RX on GPIO %d\n", c[0], c[1]);
-      xTaskCreatePinnedToCore(gnssTask, "gnss", 4096, nullptr, 1, &s_gTask, 0);
+      xTaskCreatePinnedToCore(gnssTask, "gnss", 6144, nullptr, 1, &s_gTask, 0);
       return true;
     }
   }

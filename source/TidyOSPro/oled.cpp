@@ -58,7 +58,7 @@ void oledBegin()
   pinMode(PIN_PRG, INPUT_PULLUP);
   s_oled.begin();
   s_oled.setContrast(160);
-  xTaskCreatePinnedToCore(oledTask, "oled", 3072, nullptr, 1, nullptr, 0);
+  xTaskCreatePinnedToCore(oledTask, "oled", 6144, nullptr, 1, nullptr, 0);
 }
 #else
 void oledBegin() {}

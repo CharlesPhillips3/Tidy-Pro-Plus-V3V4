@@ -914,8 +914,8 @@ void inputAttach(uiApp * app, Keyboard * kbd, BitmappedDisplayController * dc)
   static bool started = false;
   if (!started) {
     started = true;
-    if (s_bleOn) xTaskCreatePinnedToCore(bleTask, "ble", 6144, nullptr, 3, nullptr, 0);
-    xTaskCreatePinnedToCore(repeatTask, "keyrep", 3072, nullptr, 4, nullptr, 0);
+    if (s_bleOn) xTaskCreatePinnedToCore(bleTask, "ble", 8192, nullptr, 3, nullptr, 0);
+    xTaskCreatePinnedToCore(repeatTask, "keyrep", 4096, nullptr, 4, nullptr, 0);
   }
 #ifdef TIDYOS_HTML5
   if (dc) dc->setMouseCursorPos(-100, -100);       // keep FabGL's pointer off screen

@@ -26,7 +26,16 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.1.0. Settings → Check for updates now gets updates from this repo.
+Version 3.1.1. Settings → Check for updates now gets updates from this repo.
+
+### 3.1.1 fixes (first run on a real V4)
+- **Crash when opening apps** ("Stack canary watchpoint triggered" on core 0): the background tasks kept the stack
+  sizes from the classic ESP32, and the S3 needs more. Every core-0 task now has about twice the stack.
+  A new *stackwatch* task prints a warning on the serial port (115200) if any task gets within 700 bytes of the end of
+  its stack, and a table of every task's spare stack 30 seconds after start-up.
+- **Status light**: it was driving GPIO 2, which on the V4 is the radio's front-end enable, not an LED. It now uses the
+  V4's white LED (GPIO 35). The V4-R8 has no LED free for it (GPIO 35 is its PSRAM), so there it stays off.
+- Task Manager shows the PSRAM.
 
 [![The TidyOS Pro install page](docs/screenshot.png)](docs/screenshot-full.png)
 

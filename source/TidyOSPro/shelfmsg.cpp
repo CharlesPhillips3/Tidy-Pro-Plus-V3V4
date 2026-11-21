@@ -816,7 +816,7 @@ void msgBegin()
   if (gSet.meshOn) loadComs();            // mesh history only matters (and only costs RAM) with the mesh on
   s_comsUnread = 0;
   s_nowUp = gSet.meshOn && nowStart();
-  xTaskCreatePinnedToCore(msgTask, "shelfmsg", 8192, nullptr, 1, nullptr, 0);
+  xTaskCreatePinnedToCore(msgTask, "shelfmsg", 12288, nullptr, 1, nullptr, 0);
 }
 
 uint32_t msgVersion() { return s_version; }
@@ -921,7 +921,7 @@ void msgAddAddress(const std::string & address)
     delete j;
    }
     vTaskDelete(nullptr);
-  }, "msgadd", 6144, j, 1, nullptr, 0);
+  }, "msgadd", 8192, j, 1, nullptr, 0);
 }
 
 std::string msgStatus() { LOCK; return s_status; }

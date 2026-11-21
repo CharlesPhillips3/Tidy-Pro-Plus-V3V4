@@ -1311,7 +1311,7 @@ static void barStart()
   if (!s_barMux) s_barMux = xSemaphoreCreateMutex();
   if (s_barAlive) return;
   s_barRun = s_barAlive = true;
-  xTaskCreatePinnedToCore(barTask, "bar", 2048, nullptr, 1, nullptr, 1);
+  xTaskCreatePinnedToCore(barTask, "bar", 4096, nullptr, 1, nullptr, 1);
 }
 
 static void barStop()
@@ -1480,7 +1480,7 @@ static void bootDraw(Canvas & cv)
   cv.drawText(&FONT_std_16, BW_X + 10, BW_Y + 7, "Start-up switches - save memory");
   bootRow(cv, 0, "SD card", "~15 KB. Off: files go to internal storage", gSet.sdOn);
   bootRow(cv, 1, "Wireless mesh", "A few KB. Coms boards nearby", gSet.meshOn);
-  bootRow(cv, 2, "Blue light", "~2 KB. Breathes when TidyOS is ready", gSet.ledOn);
+  bootRow(cv, 2, "Status light", "~2 KB. Breathes when TidyOS is ready", gSet.ledOn);
   bootScreenRow(cv);
   bootRow(cv, 4, "Shelf messages", "~9 KB. Chat with your Shelves on Wi-Fi", gSet.shelfOn);
   // Boot button, and Update next to it
@@ -1573,7 +1573,7 @@ static void bootChooser()
       *v = !*v;
       settingsSave();
       if (toggled == 2) ledSetOn(gSet.ledOn);
-      bootRow(cv, toggled, toggled == 0 ? "SD card" : toggled == 1 ? "Wireless mesh" : "Blue light",
+      bootRow(cv, toggled, toggled == 0 ? "SD card" : toggled == 1 ? "Wireless mesh" : "Status light",
               toggled == 0 ? "~15 KB. Off: files go to internal storage" : toggled == 1 ? "A few KB. Coms boards nearby" : "~2 KB. Breathes when TidyOS is ready", *v);
       shown = -2;
     }
@@ -1643,6 +1643,32 @@ static void checkUpdateNote()
   remove(SD_MOUNT "/tidyos/update.ver");
 }
 
+// Stack watch (Tidy Pro Plus): every few seconds, look at how much stack each task has never used.
+// Prints a warning on the serial port when a task gets close to the end of its stack, so a crash
+// like "Stack canary watchpoint triggered" can be traced to the task. Also a full table once,
+// half a minute after start-up. Runs on core 1 with a small stack of its own.
+#include "freertos/task_snapshot.h"
+static void stackWatchTask(void *)
+{
+  uint32_t t0 = millis(); bool told = false;
+  for (;;) {
+    vTaskDelay(pdMS_TO_TICKS(5000));
+    UBaseType_t n = uxTaskGetNumberOfTasks(), tcb = 0;
+    TaskSnapshot_t * snap = (TaskSnapshot_t *)malloc(sizeof(TaskSnapshot_t) * (n + 4));
+    if (!snap) continue;
+    n = uxTaskGetSnapshotAll(snap, n + 4, &tcb);
+    bool all = !told && millis() - t0 > 30000;
+    if (all) { told = true; Serial.println("[TidyOS] stack headroom (bytes never used) per task:"); }
+    for (UBaseType_t i = 0; i < n; ++i) {
+      TaskHandle_t h = (TaskHandle_t)snap[i].pxTCB;
+      uint32_t free_ = (uint32_t)uxTaskGetStackHighWaterMark(h);
+      if (all) Serial.printf("  %-16s %6u\n", pcTaskGetName(h), (unsigned)free_);
+      else if (free_ < 700) Serial.printf("[TidyOS] stack low: task %s has only %u bytes spare\n", pcTaskGetName(h), (unsigned)free_);
+    }
+    free(snap);
+  }
+}
+
 void setup()
 {
 #ifdef TIDYOS_HTML5
@@ -1651,7 +1677,7 @@ void setup()
   Serial.begin(115200);
   delay(200);
   crashBegin();     // did the last run crash? (Task Manager shows it)
-  ledBegin();       // blue LED: slow blink while starting
+  ledBegin();       // white LED: slow blink while starting
   Serial.println("\n[TidyOS Pro] " TIDYOS_VERSION " (Heltec V4) starting");
 #ifdef TIDYOS_V4
   // dual boot: the next restart goes back to the boot menu (TidyBoot), which starts the last
@@ -1662,6 +1688,7 @@ void setup()
 
   settingsLoad();
   chooseDeskApps();       // which apps go on the desktop (picked in the web flasher)
+  xTaskCreatePinnedToCore(stackWatchTask, "stackwatch", 3072, nullptr, 1, nullptr, 1);
   ledSetOn(gSet.ledOn);   // ledBegin ran before the settings were read, so the switch looked "off" to it
 
   bool updMode = updateModeRequested();
@@ -1689,7 +1716,7 @@ void setup()
 #ifdef TIDYOS_HTML5
   startDisplay();
   releaseVgaPins();     // no monitor in this edition: free GPIO 19/18/5/... (the in-line SD wiring uses them)
-  bootChooser();        // start-up switches (SD card, mesh, blue light) before they take any RAM
+  bootChooser();        // start-up switches (SD card, mesh, status light) before they take any RAM
   if (gSet.sdOn) gSDMounted = mountAnySD();
 #else
   if (gSet.sdOn) gSDMounted = mountAnySD();
@@ -1745,7 +1772,7 @@ void setup()
   splash("Ready", 100);
   delay(700);           // a moment to see it all come up
   barStop();
-  ledReady();       // blue LED: breathing
+  ledReady();       // white LED: breathing
 }
 
 void loop()
