@@ -57,4 +57,11 @@ out['apps'] = [
   ('HTML Games', 30, 'extra', 1, 1), ('HTML Programs', 31, 'extra', 1, 1),
 ]
 out['apps'] = [dict(zip(('name', 'bit', 'group', 'full', 'kb'), a)) for a in out['apps']]
+# what the flasher installs: versions and build date (shown on the page)
+import re, datetime
+cfg = open(os.path.join(root, 'source/TidyOSPro/config.h')).read()
+out['version'] = re.search(r'#define TIDYOS_VERSION "([^"]+)"', cfg).group(1)
+try: out['shelfVersion'] = json.load(open(os.path.join(root, 'shelf/ota/shelf-v4-dual.json')))['version']
+except Exception: out['shelfVersion'] = ''
+out['built'] = datetime.date.today().isoformat()
 json.dump(out, open(os.path.join(root, 'parts.json'), 'w'), indent=2)

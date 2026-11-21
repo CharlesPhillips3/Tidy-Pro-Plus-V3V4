@@ -106,6 +106,10 @@ table.mt tr.tot td{font-weight:700;border-bottom:0;padding-top:8px}
 .big-save{font-size:26px;font-weight:800;color:var(--free);margin:8px 0 2px}
 .drop{border:2px dashed var(--divider);border-radius:14px;padding:28px;text-align:center;color:var(--muted);font-size:16px}
 .drop.on{border-color:var(--accent);color:var(--accent)}
+.ver-pill{display:inline-block;margin:6px 0 0;padding:4px 12px;border-radius:999px;background:var(--surface);border:1px solid var(--divider);font-size:14px}
+.ver-pill b{color:var(--accent)}
+.vtag{margin-left:8px;font-size:12px;font-weight:700;color:var(--accent);background:rgba(255,216,77,.12);border-radius:999px;padding:1px 8px}
+.will-install{margin:12px 0 0;font-size:15px}.will-install b{color:var(--accent)}
 .sh-bar{display:flex;align-items:center;gap:14px;margin:14px 0 4px;flex-wrap:wrap}.sh-bar label{cursor:pointer}
 .btn.sm{padding:5px 12px;font-size:13px}
 .sh-folder h4{margin:14px 0 0;font-size:15px}
@@ -125,6 +129,7 @@ details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var
     <img src="docs/logo.svg" alt="TidyOS Pro logo">
     <div>
       <h1>Tidy<span class="pro">PRO+</span></h1>
+      <p class="ver-pill" id="verPill" hidden></p>
       <p class="lead"><b>Tidy Pro Plus</b> is TidyOS Pro with a flasher where you tick exactly what goes on the board and see the free space as you go. A pocket field computer on a Heltec V4: a 902–928 MHz spectrum sweep, AMI meter traffic counter, GPS site survey and an RF exposure estimate, plus the TidyOS desktop in any browser. It can share the board with The Shelf (dual boot).</p>
     </div>
   </header>
@@ -156,8 +161,8 @@ details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var
     <div class="pk-cols">
       <div>
         <h3 class="pk-h">Systems</h3>
-        <label class="row"><input type="checkbox" id="c-tidyos" checked><span class="sw" style="--c:var(--c-tidy)"></span><span class="nm">TidyOS Pro<small id="n-tidyos">The field computer. Pick its apps below.</small></span><span class="sz" id="s-tidyos"></span></label>
-        <label class="row"><input type="checkbox" id="c-shelf" checked><span class="sw" style="--c:var(--c-shelf)"></span><span class="nm">The Shelf<small>Home-network hub (dual-boot build)</small></span><span class="sz" id="s-shelf"></span></label>
+        <label class="row"><input type="checkbox" id="c-tidyos" checked><span class="sw" style="--c:var(--c-tidy)"></span><span class="nm">TidyOS Pro<b class="vtag" id="v-tidyos"></b><small id="n-tidyos">The field computer. Pick its apps below.</small></span><span class="sz" id="s-tidyos"></span></label>
+        <label class="row"><input type="checkbox" id="c-shelf" checked><span class="sw" style="--c:var(--c-shelf)"></span><span class="nm">The Shelf<b class="vtag" id="v-shelf"></b><small>Home-network hub (dual-boot build)</small></span><span class="sz" id="s-shelf"></span></label>
         <label class="row sub"><input type="checkbox" id="c-www" checked><span class="sw" style="--c:var(--c-www)"></span><span class="nm">The Shelf's web app<small id="n-www">The pages The Shelf shows in your browser</small></span><span class="sz" id="s-www"></span></label>
 
         <h3 class="pk-h">Start-up</h3>
@@ -181,6 +186,7 @@ details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var
         </div>
         <table class="mt" id="m-table"></table>
         <p class="muted" id="m-note" style="margin-top:10px"></p>
+        <p class="will-install" id="willInstall"></p>
         <button class="btn big" id="pkGo">Install</button>
         <div class="fb-status" id="pkStatus" hidden><div class="fb-bar"><div id="pkFill"></div></div><div id="pkMsg"></div></div>
       </div>
@@ -647,6 +653,18 @@ function draw() {
     : `Using the <b>field build</b> (${sz(P.tidyos.size)}). Tick any TidyOS-ESP32 app to switch to the full build (${sz(extra)} more).`;
   $('n-tidyos').textContent = full ? 'Full build: field tools + every TidyOS app' : 'Field build: field tools + everyday apps';
   $('appsBox').classList.toggle('off', !on('tidyos'));
+  if (PARTS.version) {                                   // what's going on the board, by version
+    const d = PARTS.built ? new Date(PARTS.built + 'T12:00').toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+    $('verPill').hidden = false;
+    $('verPill').innerHTML = `This flasher installs <b>TidyOS Pro ${PARTS.version}</b>` + (PARTS.shelfVersion ? ` and <b>The Shelf ${PARTS.shelfVersion}</b>` : '') + (d ? ` &middot; built ${d}` : '');
+    $('v-tidyos').textContent = 'v' + PARTS.version;
+    $('v-shelf').textContent = PARTS.shelfVersion ? 'v' + PARTS.shelfVersion : '';
+    const list = [];
+    if (on('tidyos')) list.push(`<b>TidyOS Pro ${PARTS.version}</b> (${full ? 'full' : 'field'} build, ${nApps} apps)`);
+    if (on('shelf')) list.push(`<b>The Shelf ${PARTS.shelfVersion}</b>`);
+    if (on('menu')) list.push('the boot menu');
+    $('willInstall').innerHTML = list.length ? 'Will install: ' + list.join(' + ') : 'Nothing ticked to install.';
+  }
   for (const id of ['tidyos', 'shelf', 'www', 'boot', 'menu']) $('c-' + id).closest('.row').classList.toggle('off', !on(id));
   $('n-www').textContent = on('shelf') && !on('www') ? "Unticked: the web app already on the board is kept" : "The pages The Shelf shows in your browser";
   const r = plan();
@@ -711,7 +729,7 @@ document.querySelectorAll('.chip').forEach(b => b.onclick = () => {
   $('c-boot').checked = $('c-menu').checked = $('c-clear').checked = true;
   draw();
 });
-fetch('parts.json').then(r => r.json()).then(j => { PARTS = j; buildApps(); draw(); })
+fetch('parts.json', { cache: 'no-store' }).then(r => r.json()).then(j => { PARTS = j; buildApps(); draw(); })
   .catch(() => { $('m-note').textContent = "Couldn't load parts.json, so the picker can't work. Use the classic buttons below."; $('pkGo').disabled = true; });
 
 $('pkGo').onclick = async () => {
