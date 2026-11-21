@@ -64,6 +64,10 @@ static std::string mediaFolder(bool midi)
       if (t) { closedir(t); return midi ? D[i] : M[i]; }
     }
   }
+  if (!gSDMounted && !midi) {                       // no card: the board's own Music folder
+    DIR * t = opendir(FLASH_HOME "/Music");
+    if (t) { closedir(t); return FLASH_HOME "/Music"; }
+  }
   return documentsDir();
 }
 

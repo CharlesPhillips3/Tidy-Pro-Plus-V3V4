@@ -26,7 +26,14 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.1. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.2. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.2: Music and Pictures folders
+- The board's own storage gets **Music** and **Pictures** folders, and the Music app plays from Music when there's no
+  SD card. Songs dropped on the desktop start in Music, photos in Pictures (on the card, or the board without one).
+- Flasher, *Make room*: files go into **Music** and **Pictures** lists with tick boxes, Select all, **Remove** per file
+  and Remove selected. Already-Opus files (`.opus`) can be dropped in as they are. **Download selected (.zip)** gives
+  Music and Pictures folders, ready to copy onto an SD card.
 
 ### 3.4.1: updates work again, rolling news
 - **Fixed: Check for updates rebooted the board straight away.** Update mode gave Bluetooth's memory back a second

@@ -174,6 +174,8 @@ bool mountInternal()
   if (ok) {
     s_flashIsFat = true;
     mkdir(FLASH_HOME, 0777);
+    mkdir(FLASH_HOME "/Music", 0777);       // ready for songs dropped on the desktop (the Music app looks here
+    mkdir(FLASH_HOME "/Pictures", 0777);    // when there's no SD card) and photos
     moveOldFlash();
     Serial.printf("[TidyOS] board storage: %u KB free of %u KB (shared with The Shelf)\n", (unsigned)((FFat.totalBytes() - FFat.usedBytes()) / 1024), (unsigned)(FFat.totalBytes() / 1024));
     return true;

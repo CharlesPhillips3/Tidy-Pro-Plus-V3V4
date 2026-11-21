@@ -144,7 +144,16 @@ static void deskDropTick()                  // on the desktop's timer: ask where
   portEXIT_CRITICAL(&s_dropMux);
   asking = true;
   std::string from = dropDir() + "/" + name;
-  std::string to = askFile((std::string("Where should ") + name + " go?").c_str(), "Put it here", name, gSDMounted ? SD_MOUNT : FLASH_HOME);
+  // songs start in the Music folder and photos in Pictures (made if they aren't there yet)
+  std::string root = gSDMounted ? SD_MOUNT : FLASH_HOME, start = root;
+  {
+    std::string n = name; for (auto & c : n) c = tolower(c);
+    size_t dot = n.rfind('.'); std::string e = dot == std::string::npos ? "" : n.substr(dot + 1);
+    const char * sub = (e == "opus" || e == "mp3" || e == "ogg" || e == "m4a" || e == "wav" || e == "flac" || e == "aac") ? "/Music"
+                     : (e == "jpg" || e == "jpeg" || e == "png" || e == "bmp" || e == "gif" || e == "webp" || e == "avif") ? "/Pictures" : nullptr;
+    if (sub) { start = root + sub; mkdir(start.c_str(), 0777); }
+  }
+  std::string to = askFile((std::string("Where should ") + name + " go?").c_str(), "Put it here", name, start);
   if (!to.empty() && to != from) {
     if (fileSize(to.c_str()) >= 0 &&
         gApp->messageBox("Dropped file", "A file with that name is already there. Replace it?", "Replace", "Keep both", nullptr, uiMessageBoxIcon::Question) == uiMessageBoxResult::Button1)

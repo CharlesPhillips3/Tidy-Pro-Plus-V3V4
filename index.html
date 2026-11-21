@@ -106,8 +106,15 @@ table.mt tr.tot td{font-weight:700;border-bottom:0;padding-top:8px}
 .big-save{font-size:26px;font-weight:800;color:var(--free);margin:8px 0 2px}
 .drop{border:2px dashed var(--divider);border-radius:14px;padding:28px;text-align:center;color:var(--muted);font-size:16px}
 .drop.on{border-color:var(--accent);color:var(--accent)}
-#shList td:nth-child(n+2){font-variant-numeric:tabular-nums;white-space:nowrap}
-#shList a{color:var(--accent)}
+.sh-bar{display:flex;align-items:center;gap:14px;margin:14px 0 4px;flex-wrap:wrap}.sh-bar label{cursor:pointer}
+.btn.sm{padding:5px 12px;font-size:13px}
+.sh-folder h4{margin:14px 0 0;font-size:15px}
+table.mt.sh td:first-child{width:22px}table.mt.sh th{text-align:left;font-weight:600;color:var(--muted);padding:4px}
+table.mt.sh td:last-child{text-align:right}table.mt.sh tr.off td{opacity:.45}
+.xbtn{background:none;border:1px solid var(--divider);color:var(--muted);border-radius:8px;padding:2px 8px;margin-left:6px;cursor:pointer;font:inherit;font-size:12px}
+.xbtn:hover{color:#ff8080;border-color:#ff8080}
+table.mt.sh td:nth-child(n+3){font-variant-numeric:tabular-nums;white-space:nowrap}
+table.mt.sh a{color:var(--accent)}
 details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var(--muted);font-size:14px}
 @media(max-width:560px){h1{font-size:30px}header img{width:72px;height:72px}}
 </style>
@@ -233,13 +240,22 @@ details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var
         <label><input type="radio" name="shFor" value="tidy" checked> For TidyOS Pro</label>
         <label><input type="radio" name="shFor" value="shelf"> For The Shelf (AVIF photos)</label>
       </div>
-      <label class="btn alt" style="padding:8px 16px">Choose files&hellip;<input type="file" id="shPick" multiple accept="audio/*,image/*,.heic,.heif,.mp3,.m4a,.flac,.wav,.ogg" hidden></label>
+      <label class="btn alt" style="padding:8px 16px">Choose files&hellip;<input type="file" id="shPick" multiple accept="audio/*,image/*,.heic,.heif,.mp3,.m4a,.flac,.wav,.ogg,.opus" hidden></label>
     </div>
-    <div class="drop" id="shDrop">Drop MP3s and photos here</div>
-    <table class="mt" id="shList" hidden><tr><th>File</th><th>Before</th><th>After</th><th>Saved</th><th></th></tr></table>
-    <div id="shTotal" class="muted" style="margin-top:8px"></div>
-    <button class="btn" id="shZip" hidden style="margin-top:10px">Download all (.zip)</button>
-    <p class="muted" style="margin-top:10px">Then drop the shrunk files onto the TidyOS Pro desktop in your browser, and pick a folder. Easier still: drop your MP3s and photos straight onto the desktop, and TidyOS Pro shrinks them the same way as they go in (hold Alt while dropping to send them as they are).</p>
+    <div class="drop" id="shDrop">Drop MP3s, Opus songs and photos here<br><small>(.opus files are added as they are: they're already small)</small></div>
+    <div id="shFolders" hidden>
+      <div class="sh-bar">
+        <label><input type="checkbox" id="shAll" checked> Select all</label>
+        <span id="shSel" class="muted"></span>
+        <button class="btn alt sm" id="shRemove">Remove selected</button>
+      </div>
+      <div class="sh-folder"><h4>&#128193; Music <span class="muted" id="shMusicN"></span></h4><table class="mt sh" id="shMusic"><tr><th></th><th>Song</th><th>Before</th><th>After</th><th>Saved</th><th></th></tr></table></div>
+      <div class="sh-folder"><h4>&#128193; Pictures <span class="muted" id="shPicN"></span></h4><table class="mt sh" id="shPics"><tr><th></th><th>Photo</th><th>Before</th><th>After</th><th>Saved</th><th></th></tr></table></div>
+      <div id="shTotal" class="muted" style="margin-top:8px"></div>
+      <button class="btn" id="shZip" style="margin-top:10px">Download selected (.zip)</button>
+      <span class="muted" style="margin-left:8px">The zip has Music and Pictures folders, ready to copy onto an SD card.</span>
+    </div>
+    <p class="muted" style="margin-top:10px">Then copy the Music and Pictures folders onto the board's SD card, or drop the files onto the TidyOS Pro desktop in your browser: songs go to the Music folder and photos to Pictures (on the SD card, or the board's own storage without one), and the Music app plays them from there. Easier still: drop your MP3s and photos straight onto the desktop, and TidyOS Pro shrinks them the same way as they go in (hold Alt while dropping to send them as they are).</p>
   </div>
 
   <h2>3. Wire it up</h2>
@@ -322,27 +338,55 @@ PRG: switch  hold: go  4s</div>
 <script src="shrink/zip.js"></script>
 <script>
 // ---------- Shrink music and photos (in this browser) ----------
+// Each file goes in the Music or Pictures folder list, with a tick box (in the zip or not), Save and Remove.
 (function(){
- var done=[],busyQ=Promise.resolve(),tB=0,tA=0;
+ var items=[],busyQ=Promise.resolve();
  var $=function(i){return document.getElementById(i);};
  var kb=function(n){return n>=1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';};
  function target(){return document.querySelector('input[name=shFor]:checked').value;}
- function row(name){var tr=document.createElement('tr');tr.innerHTML='<td></td><td></td><td>working...</td><td></td><td></td>';tr.cells[0].textContent=name;$('shList').appendChild(tr);$('shList').hidden=false;return tr;}
+ function isOpus(f){return /\.(opus|ogg|oga)$/i.test(f.name);}
+ function refresh(){
+  var sel=items.filter(function(x){return x.on&&x.out;}),done=items.filter(function(x){return x.out;});
+  var tB=0,tA=0;sel.forEach(function(x){tB+=x.before;tA+=x.out.size;});
+  var mus=items.filter(function(x){return x.kind=='music';}),pic=items.filter(function(x){return x.kind=='photo';});
+  $('shMusic').parentNode.hidden=!mus.length;$('shPics').parentNode.hidden=!pic.length;
+  $('shMusicN').textContent=mus.length?'('+mus.length+' song'+(mus.length==1?'':'s')+')':'';
+  $('shPicN').textContent=pic.length?'('+pic.length+' photo'+(pic.length==1?'':'s')+')':'';
+  $('shFolders').hidden=!items.length;
+  $('shSel').textContent=sel.length+' of '+done.length+' selected';
+  $('shAll').checked=done.length>0&&sel.length==done.length;
+  $('shAll').indeterminate=sel.length>0&&sel.length<done.length;
+  $('shTotal').innerHTML=sel.length?'Selected: before <b>'+kb(tB)+'</b> &nbsp; after <b>'+kb(tA)+'</b> &nbsp; <b style="color:var(--free)">'+Math.max(0,Math.round(100-tA*100/tB))+'% smaller</b>':'Nothing selected.';
+  $('shZip').disabled=!sel.length;
+ }
+ function remove(x){var i=items.indexOf(x);if(i>=0)items.splice(i,1);x.tr.remove();if(x.url)URL.revokeObjectURL(x.url);refresh();}
  function one(f){
-  var tr=row(f.name);tr.cells[1].textContent=kb(f.size);
-  var job=canShrink(f)?shrinkAudio(f,function(p){tr.cells[2].textContent=p+'%';})
-         :isPhoto(f)?(target()=='shelf'?shrinkPhoto(f,'avif',2048):shrinkPhoto(f,'jpeg',1280))
-         :Promise.reject(new Error('not music or a photo'));
-  return job.then(function(o){
-   return o.arrayBuffer().then(function(ab){
-    var d=new Uint8Array(ab);done.push({name:o.name,data:d});tB+=f.size;tA+=o.size;
-    tr.cells[0].textContent=f.name+(o.name!=f.name?'  \u2192  '+o.name:'');
-    tr.cells[2].textContent=kb(o.size);
-    tr.cells[3].innerHTML='<b style="color:var(--free)">'+Math.max(0,Math.round(100-o.size*100/f.size))+'%</b>';
-    var a=document.createElement('a');a.textContent='Save';a.href=URL.createObjectURL(o);a.download=o.name;tr.cells[4].appendChild(a);
-    $('shTotal').innerHTML='Before: <b>'+kb(tB)+'</b> &nbsp; After: <b>'+kb(tA)+'</b> &nbsp; <b style="color:var(--free)">'+Math.round(100-tA*100/tB)+'% smaller</b>';
-    $('shZip').hidden=false;});
-  }).catch(function(e){tr.cells[2].textContent='skipped';tr.cells[3].textContent=(e&&e.message)||'';});
+  var kind=(canShrink(f)||isOpus(f))?'music':isPhoto(f)?'photo':null;
+  if(!kind)return Promise.resolve();
+  var tr=document.createElement('tr'),x={f:f,kind:kind,on:true,before:f.size,out:null,tr:tr};
+  tr.innerHTML='<td><input type="checkbox" checked></td><td></td><td></td><td>waiting...</td><td></td><td></td>';
+  tr.cells[1].textContent=f.name;tr.cells[2].textContent=kb(f.size);
+  var cb=tr.cells[0].firstChild;cb.disabled=true;
+  cb.onchange=function(){x.on=cb.checked;tr.classList.toggle('off',!x.on);refresh();};
+  var rm=document.createElement('button');rm.className='xbtn';rm.textContent='Remove';rm.title='Take it off the list';rm.onclick=function(){remove(x);};
+  tr.cells[5].appendChild(rm);
+  $(kind=='music'?'shMusic':'shPics').appendChild(tr);items.push(x);refresh();
+  return Promise.resolve().then(function(){
+   if(items.indexOf(x)<0)return;                                       // removed while waiting
+   tr.cells[3].textContent='working...';
+   var job=isOpus(f)?Promise.resolve(f)                                // already Opus: into the Music folder as it is
+          :kind=='music'?shrinkAudio(f,function(p){tr.cells[3].textContent=p+'%';})
+          :(target()=='shelf'?shrinkPhoto(f,'avif',2048):shrinkPhoto(f,'jpeg',1280));
+   return job.then(function(o){
+    if(items.indexOf(x)<0)return;
+    x.out=o;cb.disabled=false;
+    if(o.name!=f.name)tr.cells[1].textContent=f.name+'  →  '+o.name;
+    tr.cells[3].textContent=kb(o.size);
+    tr.cells[4].innerHTML=o===f&&isOpus(f)?'<span class="muted">as is</span>':'<b style="color:var(--free)">'+Math.max(0,Math.round(100-o.size*100/f.size))+'%</b>';
+    var a=document.createElement('a');a.textContent='Save';x.url=a.href=URL.createObjectURL(o);a.download=o.name;tr.cells[5].insertBefore(a,rm);
+    refresh();
+   }).catch(function(e){tr.cells[3].textContent='skipped';tr.cells[4].textContent=(e&&e.message)||'';cb.checked=false;x.on=false;refresh();});
+  });
  }
  function add(list){[].slice.call(list).forEach(function(f){busyQ=busyQ.then(function(){return one(f);});});}
  var dz=$('shDrop');
@@ -350,7 +394,13 @@ PRG: switch  hold: go  4s</div>
  dz.addEventListener('dragleave',function(){dz.classList.remove('on');});
  dz.addEventListener('drop',function(e){e.preventDefault();dz.classList.remove('on');add(e.dataTransfer.files);});
  $('shPick').onchange=function(){add(this.files);this.value='';};
- $('shZip').onclick=function(){var a=document.createElement('a');a.href=URL.createObjectURL(makeZip(done));a.download='shrunk-for-tidyos.zip';a.click();};
+ $('shAll').onchange=function(){var on=this.checked;items.forEach(function(x){if(!x.out)return;x.on=on;x.tr.cells[0].firstChild.checked=on;x.tr.classList.toggle('off',!on);});refresh();};
+ $('shRemove').onclick=function(){items.filter(function(x){return x.on&&x.out;}).forEach(remove);};
+ $('shZip').onclick=function(){
+  var sel=items.filter(function(x){return x.on&&x.out;});if(!sel.length)return;
+  Promise.all(sel.map(function(x){return x.out.arrayBuffer().then(function(ab){return {name:(x.kind=='music'?'Music/':'Pictures/')+x.out.name,data:new Uint8Array(ab)};});}))
+   .then(function(files){var a=document.createElement('a');a.href=URL.createObjectURL(makeZip(files));a.download=(target()=='shelf'?'shrunk-for-the-shelf':'shrunk-for-tidyos')+'.zip';a.click();});
+ };
 })();
 </script>
 <script type="module">
