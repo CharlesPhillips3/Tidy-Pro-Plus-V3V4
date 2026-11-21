@@ -387,6 +387,58 @@ static int seriesMin(const FieldSeries & f, int dflt) { int m = 99999; for (int 
 static int seriesLast(const FieldSeries & f) { for (int i = f.n - 1; i >= 0; --i) if (f.ok[i]) return f.v[i]; return -99999; }
 static const char * compass(int deg) { static const char * C[8] = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" }; return C[((deg + 22) / 45) % 8]; }
 
+// HF bands, the usual rule of thumb from solar flux and Kp (an estimate, like the ham sites).
+// 160 m and 80 m don't follow the solar flux: the sun's D layer soaks them up by day, so they open
+// after dark, and a stirred-up field (high Kp) brings noise and absorption. So for them: the sun's
+// height where you are (from the weather lookup; without it, the clock), then Kp.
+// out: 160, 80, 40, 20, 15, 10 m. false = no solar data yet.
+static bool hfRatings(const char * out[6])
+{
+  int kp10 = -99999;
+  for (int i = s_fKp.n - 1; i >= 0; --i) if (s_fKp.ok[i]) { kp10 = s_fKp.v[i]; break; }
+  if (s_fSfi <= 0 || kp10 == -99999) return false;
+  float kp = kp10 / 10.0f;
+  int sfi = s_fSfi;
+  auto q = [&](int need) { return kp >= 5 ? "Poor" : sfi >= need + 30 ? "Good" : sfi >= need ? "Fair" : "Poor"; };
+  float sunH;                                   // sine of the sun's height here
+  {
+    time_t now2 = time(nullptr); struct tm u; gmtime_r(&now2, &u);
+    float doy = u.tm_yday + (u.tm_hour + u.tm_min / 60.0f) / 24.0f;
+    float decl = -23.44f * cosf(2 * PI / 365.0f * (doy + 10)) * PI / 180;
+    float sunLon = -15.0f * (u.tm_hour + u.tm_min / 60.0f - 12) * PI / 180;
+    if (s_wx.haveLoc) {
+      float la = s_wx.lat * PI / 180, lo = s_wx.lon * PI / 180;
+      sunH = sinf(la) * sinf(decl) + cosf(la) * cosf(decl) * cosf(lo - sunLon);
+    } else { struct tm l; localtime_r(&now2, &l); sunH = (l.tm_hour >= 7 && l.tm_hour < 17) ? 0.5f : (l.tm_hour >= 19 || l.tm_hour < 5) ? -0.5f : 0.0f; }
+  }
+  bool night = sunH < -0.1f, day = sunH > 0.1f;          // in between: dusk or dawn (the grey line)
+  out[0] = day ? "Poor" : kp >= 4 ? "Poor" : night ? (kp < 3 ? "Good" : "Fair") : "Fair";
+  out[1] = day ? (kp >= 5 ? "Poor" : "Local") : kp >= 5 ? "Poor" : night ? (kp < 4 ? "Good" : "Fair") : "Fair";
+  out[2] = kp >= 5 ? "Fair" : "Good";
+  out[3] = q(70); out[4] = q(100); out[5] = q(120);
+  return true;
+}
+
+// a copy of everything above for the OLED's pages (oled.cpp), taken from its own task
+#include "oled_data.h"
+int msgUnreadTotal(); int comsUnread();
+void deskSnapshot(DeskSnap & d)
+{
+  d.wxOk = s_wx.code >= 0;
+  d.temp = s_wx.temp; d.hi = s_wx.hi; d.lo = s_wx.lo;
+  strlcpy(d.cond, d.wxOk ? wxText(s_wx.code) : "", sizeof(d.cond));
+  strlcpy(d.city, s_wx.city, sizeof(d.city));
+  d.tempsN = s_tempsN; memcpy(d.temps, s_temps, sizeof(d.temps));
+  auto cp = [](DeskSeries & o, const FieldSeries & f) { o.n = f.n; memcpy(o.v, f.v, sizeof(o.v)); memcpy(o.ok, f.ok, sizeof(o.ok)); };
+  cp(d.wind, s_fWind); cp(d.gust, s_fGust); cp(d.hum, s_fHum); cp(d.cape, s_fCape); cp(d.thun, s_fThun); cp(d.duct, s_fDuct); cp(d.kp, s_fKp);
+  d.haveNow = s_fHaveNow; d.windNow = s_fNow[0]; d.gustNow = s_fNow[1]; d.windDir = s_fNow[2]; d.rh = s_fNow[3]; d.dew = s_fNow[4]; d.inHg = s_fInHg;
+  d.sfi = s_fSfi; strlcpy(d.xray, s_fXray, sizeof(d.xray));
+  d.hfOk = hfRatings(d.hf);
+  d.alertN = s_fAlertN;
+  for (int i = 0; i < 3; ++i) strlcpy(d.alert[i], s_fAlert[i], sizeof(d.alert[i]));
+  d.unread = msgUnreadTotal() + comsUnread();
+}
+
 static int drawFieldPanel(Canvas * cv, Rect r, int x, int y)
 {
   char b[96];
@@ -440,30 +492,12 @@ static int drawFieldPanel(Canvas * cv, Rect r, int x, int y)
   if (s_fXray[0]) { sw += "  X-ray "; sw += s_fXray; }
   if (sw == "Sun:") sw = "Sun: looking it up...";
   cv->drawText(&FONT_std_12, x, y, sw.c_str());
-  // HF bands, the usual rule of thumb from solar flux and Kp (an estimate, like the ham sites)
-  if (s_fSfi > 0 && kp10 != -99999) {
-    float kp = kp10 / 10.0f;
-    auto q = [&](int need) { return kp >= 5 ? "Poor" : s_fSfi >= need + 30 ? "Good" : s_fSfi >= need ? "Fair" : "Poor"; };
-    // 160 m and 80 m don't follow the solar flux: the sun's D layer soaks them up by day, so they
-    // open after dark, and a stirred-up field (high Kp) brings noise and absorption. So: the sun's
-    // height where you are (from the weather lookup; without it, the clock), then Kp.
-    float sunH;                                   // sine of the sun's height here
-    {
-      time_t now2 = time(nullptr); struct tm u; gmtime_r(&now2, &u);
-      float doy = u.tm_yday + (u.tm_hour + u.tm_min / 60.0f) / 24.0f;
-      float decl = -23.44f * cosf(2 * PI / 365.0f * (doy + 10)) * PI / 180;
-      float sunLon = -15.0f * (u.tm_hour + u.tm_min / 60.0f - 12) * PI / 180;
-      if (s_wx.haveLoc) {
-        float la = s_wx.lat * PI / 180, lo = s_wx.lon * PI / 180;
-        sunH = sinf(la) * sinf(decl) + cosf(la) * cosf(decl) * cosf(lo - sunLon);
-      } else { struct tm l; localtime_r(&now2, &l); sunH = (l.tm_hour >= 7 && l.tm_hour < 17) ? 0.5f : (l.tm_hour >= 19 || l.tm_hour < 5) ? -0.5f : 0.0f; }
-    }
-    bool night = sunH < -0.1f, day = sunH > 0.1f;          // in between: dusk or dawn (the grey line)
-    const char * b160 = day ? "Poor" : kp >= 4 ? "Poor" : night ? (kp < 3 ? "Good" : "Fair") : "Fair";
-    const char * b80  = day ? (kp >= 5 ? "Poor" : "Local") : kp >= 5 ? "Poor" : night ? (kp < 4 ? "Good" : "Fair") : "Fair";
-    snprintf(b, sizeof(b), "HF  160m %s   80m %s   40m %s", b160, b80, kp >= 5 ? "Fair" : "Good");
+  // HF bands (hfRatings: the same as the OLED shows)
+  const char * hf[6];
+  if (hfRatings(hf)) {
+    snprintf(b, sizeof(b), "HF  160m %s   80m %s   40m %s", hf[0], hf[1], hf[2]);
     cv->drawText(&FONT_std_12, x, y + 13, b);
-    snprintf(b, sizeof(b), "       20m %s   15m %s   10m %s", q(70), q(100), q(120));
+    snprintf(b, sizeof(b), "       20m %s   15m %s   10m %s", hf[3], hf[4], hf[5]);
     cv->drawText(&FONT_std_12, x, y + 26, b);
     y += 13;
   }

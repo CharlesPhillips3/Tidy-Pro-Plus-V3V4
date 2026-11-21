@@ -26,7 +26,22 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.1.4. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.2.0. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.2.0
+- **The crash is found**: FabGL's drawing task (it draws every window, line and letter of the desktop) had a
+  1,200-byte stack. On the ESP32-S3, with the screen in PSRAM, that ran out a few seconds after the desktop appeared
+  ("Stack canary watchpoint triggered" on core 0, with a blank task name). It now has 6 KB, and FabGL's tasks have names
+  (`fabgl-draw`, `fabgl-ui`...) so a log would show them. The stack watch no longer warns about ESP-IDF's idle/ipc tasks.
+- **The OLED shows rolling pages** of the desktop's live data, changing every 30 s: address, clock, weather (with the
+  4-day temperature graph), wind + humidity, sun + HF bands (160 to 10 m, Kp graph), storms + NWS alerts, 900 MHz
+  (a live mini spectrum when RF Sweep runs, plus GPS), system (RAM, PSRAM, flash, Wi-Fi, uptime) and a stopwatch.
+  PRG: tap once to hold a page (again to roll), tap twice for the next page; on the stopwatch hold 1 s to start/stop,
+  3 s to reset. The stopwatch keeps running on the other pages (shown top right). It dims after 30 minutes without a press.
+- **Address page** first after start-up: the IP address and name on your Wi-Fi, or the hotspot's name, password and
+  address in full (the old screen cut "192.168.4.1" off).
+- **Bottom bar**: the TidyOS logo in a rounded box with a blue PRO badge, then the version and the board's last 4 ID digits;
+  the clock shows seconds when there's room, and its colons blink every second.
 
 ### 3.1.4
 - **HF bands now include 160 m and 80 m.** They're rated from whether it's dark where you are (the sun's height at

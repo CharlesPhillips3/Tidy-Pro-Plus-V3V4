@@ -251,6 +251,16 @@ void setSavedLight(uiLabel * l, bool saved)
 static std::vector<uiFrame *> s_minimized;
 static uiControl * s_deskCtl = nullptr;
 static int s_ramX = 330;          // where the RAM text starts on the taskbar
+// free space where files go: the SD card when it's on, otherwise TidyOS Pro's own flash (bar and OLED)
+bool storageFree(int64_t & freeB, bool & sd)
+{
+  int64_t total = 0, used = 0;
+  if (gSDMounted && FileBrowser::getFSInfo(fabgl::DriveType::SDCard, 0, &total, &used)) { freeB = total - used; sd = true; return true; }
+  if (gFlashMounted && FileBrowser::getFSInfo(fabgl::DriveType::SPIFFS, 0, &total, &used)) { freeB = total - used; sd = false; return true; }
+  return false;
+}
+
+static int s_clockX = 0;                  // where the bar's clock starts (it moves with the seconds)
 static Rect s_optBtn;             // the Optimize button after it
 static std::string s_optMsg;      // what Optimize did (shown for a few seconds)
 static uint32_t s_optUntil = 0;
@@ -741,6 +751,10 @@ public:
           std::string n = s_bootNote; s_bootNote.clear();
           gApp->messageBox("Update", n.c_str(), "OK", nullptr, nullptr, uiMessageBoxIcon::Info);
         }
+        {                                           // the clock: repaint as soon as the second changes, so it blinks evenly
+          time_t ns = time(nullptr);
+          if (ns != m_lastSec) { m_lastSec = ns; repaint(Rect(imax(0, s_clockX - 4), SCREEN_H - BAR_H, SCREEN_W - 1, SCREEN_H - 1)); }
+        }
         if (++m_tick % 10) break;                   // the rest once a second (timer: 100 ms)
         netTick();
         gHeapSnap = ramFree(); gMinHeapSnap = ramLowest();
@@ -770,6 +784,7 @@ private:
   int m_pressed = -1;
   int m_unread = 0;
   int m_tick = 0;
+  time_t m_lastSec = 0;
   std::string m_hintSig;
 
   Rect iconRect(int i) {
@@ -850,7 +865,7 @@ private:
   void taskSlots(Canvas * cv, const char * ramText, int & x1, int & x2, std::vector<Rect> & out) {
     int by = SCREEN_H - BAR_H;
     x1 = s_optBtn.X2 > 0 ? s_optBtn.X2 + 8 : s_ramX + cv->textExtent(&FONT_std_12, ramText) + 10;
-    x2 = SCREEN_W - cv->textExtent(&FONT_std_14, "12:00 PM") - 16;
+    x2 = (s_clockX > 0 ? s_clockX : SCREEN_W - cv->textExtent(&FONT_std_14, "12:00 PM")) - 16;
     int n = s_minimized.size();
     if (!n || x2 - x1 < 30) return;
     int w = imin(80, (x2 - x1) / n);
@@ -868,15 +883,14 @@ private:
       static char st[28] = ""; static uint32_t stAt = 0;
       if (!st[0] || millis() - stAt > 10000) {
         stAt = millis();
-        int64_t total = 0, used = 0;
+        int64_t fb = 0; bool onSd = false;
         auto human = [](int64_t n, char * o, size_t m) {
           if (n >= (1LL << 30)) snprintf(o, m, "%u.%uG", (unsigned)(n >> 30), (unsigned)((n % (1LL << 30)) * 10 >> 30));
           else if (n >= (1LL << 20)) snprintf(o, m, "%u.%uM", (unsigned)(n >> 20), (unsigned)((n % (1LL << 20)) * 10 >> 20));
           else snprintf(o, m, "%uK", (unsigned)(n >> 10));
         };
         char h[12];
-        if (gSDMounted && FileBrowser::getFSInfo(fabgl::DriveType::SDCard, 0, &total, &used)) { human(total - used, h, sizeof(h)); snprintf(st, sizeof(st), ", SD %s", h); }
-        else if (gFlashMounted && FileBrowser::getFSInfo(fabgl::DriveType::SPIFFS, 0, &total, &used)) { human(total - used, h, sizeof(h)); snprintf(st, sizeof(st), ", flash %s", h); }
+        if (storageFree(fb, onSd)) { human(fb, h, sizeof(h)); snprintf(st, sizeof(st), onSd ? ", SD %s" : ", flash %s", h); }
         else st[0] = 0;
       }
       if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM)) snprintf(b, sizeof(b), "RAM %uK + PSRAM %u.%uM%s free", (unsigned)(in / 1024), (unsigned)(ps / 1048576), (unsigned)(ps % 1048576 * 10 / 1048576), st);
@@ -960,12 +974,33 @@ private:
       // groups, each centred on the bar, with a thin divider between them
       auto ty = [&](const fabgl::FontInfo * f) { return by + 1 + (BAR_H - 1 - (int)f->height) / 2; };
       auto divider = [&](int x) { cv->setPenColor(T.shadow); cv->drawLine(x, by + 4, x, SCREEN_H - 4); cv->setPenColor(T.text); };
-      int x = 8;
-      cv->drawText(&FONT_std_14, x, ty(&FONT_std_14), TIDYOS_NAME);
-      x += cv->textExtent(&FONT_std_14, TIDYOS_NAME) + 6;
-      std::string vid = std::string("v" TIDYOS_VERSION "  ") + boardId().substr(7);     // version and this board's number
-      cv->drawText(&FONT_std_12, x, ty(&FONT_std_12), vid.c_str());
-      x += cv->textExtent(&FONT_std_12, vid.c_str()) + 8;
+      int x = 4;
+      {                                                   // the logo: "TidyOS" and a blue PRO badge in a rounded box
+        const fabgl::FontInfo * fT = &FONT_std_14, * fP = &FONT_std_12;
+        int wT = cv->textExtent(fT, "TidyOS"), wP = cv->textExtent(fP, "PRO");
+        int x0 = x, y0 = by + 2, y1 = SCREEN_H - 3, x1 = x0 + 6 + wT + 5 + wP + 8 + 4;
+        cv->setPenColor(T.text);
+        cv->drawLine(x0 + 2, y0, x1 - 2, y0); cv->drawLine(x0 + 2, y1, x1 - 2, y1);
+        cv->drawLine(x0, y0 + 2, x0, y1 - 2); cv->drawLine(x1, y0 + 2, x1, y1 - 2);
+        cv->setPixel(x0 + 1, y0 + 1); cv->setPixel(x1 - 1, y0 + 1); cv->setPixel(x0 + 1, y1 - 1); cv->setPixel(x1 - 1, y1 - 1);
+        cv->drawText(fT, x0 + 6, ty(fT), "TidyOS");
+        int px1 = x0 + 6 + wT + 5, px2 = px1 + wP + 7, py1 = y0 + 3, py2 = y1 - 3;
+        cv->setBrushColor(T.accent);
+        cv->fillRectangle(px1, py1, px2, py2);
+        cv->setPenColor(T.face);                          // round the badge's corners
+        cv->setPixel(px1, py1); cv->setPixel(px2, py1); cv->setPixel(px1, py2); cv->setPixel(px2, py2);
+        cv->setPenColor(T.accentText);
+        cv->drawText(fP, px1 + 4, py1 + (py2 - py1 + 1 - (int)fP->height) / 2, "PRO");
+        cv->setPenColor(T.text); cv->setBrushColor(T.face);
+        x = x1 + 10;
+      }
+      cv->drawText(&FONT_std_12, x, ty(&FONT_std_12), "v" TIDYOS_VERSION);
+      x += cv->textExtent(&FONT_std_12, "v" TIDYOS_VERSION) + 8;
+      std::string bid = "#" + boardId().substr(boardId().size() - 4);    // this board: the last 4 of its ID
+      cv->setPenColor(T.shadow == T.face ? T.text : T.shadow);
+      cv->drawText(&FONT_std_12, x, ty(&FONT_std_12), bid.c_str());
+      cv->setPenColor(T.text);
+      x += cv->textExtent(&FONT_std_12, bid.c_str()) + 8;
       divider(x); x += 8;
       char b[96];
       std::string ns = netStatus();
@@ -1009,14 +1044,31 @@ private:
       time_t now = time(nullptr);
       struct tm tmv;
       localtime_r(&now, &tmv);
+      // the clock: colons blink once a second; seconds too when the bar has room for them
       if (tmv.tm_year > 100) {
+        const fabgl::FontInfo * f = &FONT_std_14;
         int h = tmv.tm_hour % 12; if (h == 0) h = 12;
-        snprintf(b, sizeof(b), "%d:%02d %s", h, tmv.tm_min, tmv.tm_hour < 12 ? "AM" : "PM");
+        char hs[4], ms[4], ss[4], ap[4];
+        snprintf(hs, sizeof(hs), "%d", h); snprintf(ms, sizeof(ms), "%02d", tmv.tm_min);
+        snprintf(ss, sizeof(ss), "%02d", tmv.tm_sec); snprintf(ap, sizeof(ap), " %s", tmv.tm_hour < 12 ? "AM" : "PM");
+        int cw = cv->textExtent(f, ":"), dw = cv->textExtent(f, "00");
+        int left = s_optBtn.X2 > 0 ? s_optBtn.X2 + 10 : SCREEN_W / 2;
+        int wSec = cv->textExtent(f, "12") + cw + dw + cw + dw + cv->textExtent(f, " PM");
+        bool secs = SCREEN_W - 8 - wSec >= left + (int)s_minimized.size() * 30;
+        int w = cv->textExtent(f, hs) + cw + dw + (secs ? cw + dw : 0) + cv->textExtent(f, ap);
+        int cx = SCREEN_W - w - 8, cy = by + 3;
+        s_clockX = cx;
+        bool on = (tmv.tm_sec & 1) == 0;
+        cv->drawText(f, cx, cy, hs); cx += cv->textExtent(f, hs);
+        if (on) cv->drawText(f, cx, cy, ":"); cx += cw;
+        cv->drawText(f, cx, cy, ms); cx += dw;
+        if (secs) { if (on) cv->drawText(f, cx, cy, ":"); cx += cw; cv->drawText(f, cx, cy, ss); cx += dw; }
+        cv->drawText(f, cx, cy, ap);
       } else {
         snprintf(b, sizeof(b), "--:--");
+        int w = cv->textExtent(&FONT_std_14, b);
+        cv->drawText(&FONT_std_14, SCREEN_W - w - 8, by + 3, b);
       }
-      int w = cv->textExtent(&FONT_std_14, b);
-      cv->drawText(&FONT_std_14, SCREEN_W - w - 8, by + 3, b);
     }
   }
 };
@@ -1704,8 +1756,12 @@ static void stackWatchTask(void *)
     for (UBaseType_t i = 0; i < n; ++i) {
       TaskHandle_t h = (TaskHandle_t)snap[i].pxTCB;
       uint32_t free_ = (uint32_t)uxTaskGetStackHighWaterMark(h);
-      if (all) Serial.printf("  %-16s %6u\n", pcTaskGetName(h), (unsigned)free_);
-      else if (free_ < 700) Serial.printf("[TidyOS] stack low: task %s has only %u bytes spare\n", pcTaskGetName(h), (unsigned)free_);
+      if (all) Serial.printf("  %-16s %6u\n", pcTaskGetName(h)[0] ? pcTaskGetName(h) : "(no name)", (unsigned)free_);
+      else if (free_ < 600) {
+        const char * nm = pcTaskGetName(h);                 // ESP-IDF's own idle / ipc tasks always run this tight
+        if (strncmp(nm, "IDLE", 4) && strncmp(nm, "ipc", 3))
+          Serial.printf("[TidyOS] stack low: task %s has only %u bytes spare\n", nm[0] ? nm : "(no name)", (unsigned)free_);
+      }
     }
     free(snap);
   }

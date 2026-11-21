@@ -91,7 +91,7 @@
 
 
 /** Stack size of the task that converts scancodes to Virtual Keys Keyboard */
-#define FABGLIB_DEFAULT_SCODETOVK_TASK_STACK_SIZE 1500
+#define FABGLIB_DEFAULT_SCODETOVK_TASK_STACK_SIZE 3072
 
 
 /** Priority of the task that converts scancodes to Virtual Keys Keyboard */
@@ -143,7 +143,7 @@
 
 
 /** Stack size of primitives drawing task of paletted based VGA controllers */
-#define FABGLIB_VGAPALETTEDCONTROLLER_PRIMTASK_STACK_SIZE 1200
+#define FABGLIB_VGAPALETTEDCONTROLLER_PRIMTASK_STACK_SIZE 6144   // Tidy Pro Plus: 1200 overflowed on the ESP32-S3 (screen in PSRAM)
 
 
 /** Priority of primitives drawing task of paletted based VGA controllers */

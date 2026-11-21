@@ -110,7 +110,7 @@ void Keyboard::enableVirtualKeys(bool generateVirtualKeys, bool createVKQueue)
     m_virtualKeyQueue = xQueueCreate(FABGLIB_KEYBOARD_VIRTUALKEY_QUEUE_SIZE, sizeof(VirtualKeyItem));
 
   if (!m_SCodeToVKConverterTask && generateVirtualKeys)
-    xTaskCreate(&SCodeToVKConverterTask, "", Keyboard::scancodeToVirtualKeyTaskStackSize, this, FABGLIB_SCODETOVK_TASK_PRIORITY, &m_SCodeToVKConverterTask);
+    xTaskCreate(&SCodeToVKConverterTask, "fabgl-keys", Keyboard::scancodeToVirtualKeyTaskStackSize, this, FABGLIB_SCODETOVK_TASK_PRIORITY, &m_SCodeToVKConverterTask);
 
   // destroy in reverse order
 

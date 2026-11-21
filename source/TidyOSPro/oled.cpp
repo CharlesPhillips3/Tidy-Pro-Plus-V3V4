@@ -1,5 +1,12 @@
-// TidyOS Pro - the Heltec V4's little OLED: where to find the desktop, and the radio / GPS at a glance.
-// Sleeps after 5 minutes (it's an OLED); a press of PRG wakes it for another 5.
+// Tidy Pro Plus - the Heltec V4's little OLED (128 x 64): rolling pages of the desktop's live data.
+//
+// Pages: address, clock, weather, wind + humidity, sun + HF bands, storms + alerts, 900 MHz, system, stopwatch.
+// It moves to the next page every 30 seconds. The PRG button:
+//   tap once        hold this page (tap once more to roll again)
+//   tap twice       next page
+//   hold 1 s        stopwatch page: start / stop
+//   hold 3 s        stopwatch page: reset
+// After 30 minutes without a press it dims; any press brightens it again (that press does nothing else).
 #include "config.h"
 #ifdef TIDYOS_V4
 #include <Arduino.h>
@@ -7,43 +14,364 @@
 #include <WiFi.h>
 #include <U8g2lib.h>
 #include <mutex>
+#include <math.h>
 #include "rf_engine.h"
 #include "net.h"
 #include "screen.h"
 #include "core.h"
+#include "oled_data.h"
+using fabgl::imin; using fabgl::imax;
 
 static U8G2_SSD1306_128X64_NONAME_F_HW_I2C s_oled(U8G2_R0, OLED_RST, OLED_SCL, OLED_SDA);
-static const uint32_t AWAKE_MS = 5UL * 60 * 1000;
+static const uint32_t PAGE_MS = 30000, DIM_MS = 30UL * 60 * 1000, TAP_GAP_MS = 400, LONG_MS = 1000, RESET_MS = 3000;
+static const uint8_t BRIGHT = 160, DIM = 8;
+
+enum Page { P_ADDRESS, P_CLOCK, P_WEATHER, P_WIND, P_SUN, P_STORMS, P_RADIO, P_SYSTEM, P_STOPWATCH, P_COUNT };
+static const char * TITLE[P_COUNT] = { "ADDRESS", "CLOCK", "WEATHER", "WIND + HUMIDITY", "SUN + HF BANDS", "STORMS + ALERTS", "900 MHz", "SYSTEM", "STOPWATCH" };
+
+// stopwatch
+static bool s_swRun = false;
+static uint32_t s_swStart = 0, s_swAcc = 0;                  // ms counted before the current run
+static uint32_t swMs() { return s_swAcc + (s_swRun ? millis() - s_swStart : 0); }
+static void swFmt(char * b, size_t n, uint32_t ms, bool tenths)
+{
+  uint32_t s = ms / 1000, h = s / 3600, m = (s / 60) % 60;
+  if (h) snprintf(b, n, "%u:%02u:%02u", (unsigned)h, (unsigned)m, (unsigned)(s % 60));
+  else if (tenths) snprintf(b, n, "%02u:%02u.%u", (unsigned)m, (unsigned)(s % 60), (unsigned)(ms / 100 % 10));
+  else snprintf(b, n, "%u:%02u", (unsigned)m, (unsigned)(s % 60));
+}
+
+static DeskSnap s_d;                                         // the desktop's data (refreshed every page draw)
+static float s_spec[rf::NCH]; static bool s_specOk = false; static float s_nf = -120, s_occ = 0; static bool s_over = false;
+
+static void centre(const char * t, int y) { s_oled.drawStr((128 - s_oled.getStrWidth(t)) / 2, y, t); }
+// draws a line of text, cut short so it fits on the screen
+static void fit(int x, int y, const char * t)
+{
+  char b[64]; strlcpy(b, t, sizeof(b));
+  size_t n = strlen(b);
+  while (n > 1 && x + s_oled.getStrWidth(b) > 128) b[--n] = 0;
+  s_oled.drawStr(x, y, b);
+}
+
+// a little line graph of a 3-hourly series; bars = draw it as bars
+static void graph(const DeskSeries & f, int x, int y, int w, int h, int lo, int hi, bool bars)
+{
+  s_oled.drawFrame(x, y, w, h);
+  if (f.n < 2 || hi <= lo) return;
+  auto X = [&](int i) { return x + 1 + i * (w - 3) / (f.n - 1); };
+  auto Y = [&](int v) { v = v < lo ? lo : v > hi ? hi : v; return y + h - 2 - (v - lo) * (h - 3) / (hi - lo); };
+  for (int i = 0; i < f.n; ++i) {
+    if (!f.ok[i]) continue;
+    if (bars) s_oled.drawVLine(X(i), Y(f.v[i]), y + h - 1 - Y(f.v[i]));
+    else if (i && f.ok[i - 1]) s_oled.drawLine(X(i - 1), Y(f.v[i - 1]), X(i), Y(f.v[i]));
+  }
+}
+static int smax(const DeskSeries & f, int d) { int m = -99999; for (int i = 0; i < f.n; ++i) if (f.ok[i] && f.v[i] > m) m = f.v[i]; return m == -99999 ? d : m; }
+static int slast(const DeskSeries & f) { for (int i = f.n - 1; i >= 0; --i) if (f.ok[i]) return f.v[i]; return -99999; }
+static const char * compass(int deg) { static const char * C[8] = { "N", "NE", "E", "SE", "S", "SW", "W", "NW" }; return C[((deg + 22) / 45) % 8]; }
+
+static void pageClock()
+{
+  time_t now = time(nullptr);
+  char b[40];
+  if (now < 1600000000) { s_oled.setFont(u8g2_font_6x12_tr); centre("Waiting for the clock", 34); }
+  else {
+    struct tm t; localtime_r(&now, &t);
+    int h = t.tm_hour % 12; if (!h) h = 12;
+    snprintf(b, sizeof(b), "%d:%02d:%02d", h, t.tm_min, t.tm_sec);
+    s_oled.setFont(u8g2_font_logisoso22_tn);
+    int w = s_oled.getStrWidth(b);
+    s_oled.drawStr((116 - w) / 2, 37, b);
+    s_oled.setFont(u8g2_font_6x12_tr);
+    s_oled.drawStr((116 - w) / 2 + w + 2, 37, t.tm_hour < 12 ? "AM" : "PM");
+    static const char * D[7] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+    static const char * M[12] = { "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec" };
+    snprintf(b, sizeof(b), "%s %s %d, %d", D[t.tm_wday % 7], M[t.tm_mon % 12], t.tm_mday, t.tm_year + 1900);
+    centre(b, 50);
+  }
+  s_oled.setFont(u8g2_font_5x8_tr);
+  if (netConnected()) snprintf(b, sizeof(b), "http://%s", WiFi.localIP().toString().c_str());
+  else snprintf(b, sizeof(b), "Hotspot: http://192.168.4.1");
+  centre(b, 62);
+}
+
+// how to reach the desktop: the address on the home Wi-Fi, or how to join the board's own hotspot
+static void pageAddress()
+{
+  char b[48];
+  if (netConnected()) {
+    s_oled.setFont(u8g2_font_5x8_tr); centre("Open in a browser:", 19);
+    snprintf(b, sizeof(b), "%s", WiFi.localIP().toString().c_str());
+    s_oled.setFont(u8g2_font_7x14B_tr);
+    if (s_oled.getStrWidth(b) > 128) s_oled.setFont(u8g2_font_6x12_tr);
+    centre(b, 35);
+    s_oled.setFont(u8g2_font_5x8_tr);
+    snprintf(b, sizeof(b), "%s.local", boardHost().c_str()); fit(imax(0, (128 - s_oled.getStrWidth(b)) / 2), 47, b);
+    snprintf(b, sizeof(b), "on %s", WiFi.SSID().c_str()); fit(imax(0, (128 - s_oled.getStrWidth(b)) / 2), 58, b);
+  } else {
+    s_oled.setFont(u8g2_font_5x8_tr); centre("Join the Wi-Fi:", 19);
+    s_oled.setFont(u8g2_font_7x14B_tr);
+    snprintf(b, sizeof(b), "%s", boardId().c_str());
+    if (s_oled.getStrWidth(b) > 128) s_oled.setFont(u8g2_font_6x12_tr);
+    centre(b, 34);
+    s_oled.setFont(u8g2_font_5x8_tr);
+    snprintf(b, sizeof(b), "password %s", SCREEN_AP_PASS); centre(b, 46);
+    centre("then open 192.168.4.1", 57);
+  }
+}
+
+static void pageWeather()
+{
+  char b[48];
+  if (!s_d.wxOk) {
+    s_oled.setFont(u8g2_font_6x12_tr);
+    centre("Weather shows when", 30); centre("the desktop is open", 42); centre("in a browser", 54);
+    return;
+  }
+  snprintf(b, sizeof(b), "%d", s_d.temp);
+  s_oled.setFont(u8g2_font_logisoso22_tn);
+  s_oled.drawStr(0, 35, b);
+  int w = s_oled.getStrWidth(b);
+  s_oled.drawCircle(w + 3, 15, 2);                           // the degree sign
+  s_oled.setFont(u8g2_font_6x12_tr);
+  s_oled.drawStr(w + 7, 22, "F");
+  fit(w + 16, 22, s_d.cond);
+  s_oled.setFont(u8g2_font_5x8_tr);
+  snprintf(b, sizeof(b), "H%d L%d %s", s_d.hi, s_d.lo, s_d.city);
+  fit(w + 16, 34, b);
+  // the last 4 days of temperatures, with a dotted freezing line
+  if (s_d.tempsN > 1) {
+    int lo = 999, hi = -999;
+    for (int i = 0; i < s_d.tempsN; ++i) { lo = imin(lo, s_d.temps[i]); hi = imax(hi, s_d.temps[i]); }
+    lo -= 2; hi += 2;
+    const int gx = 0, gy = 40, gw = 128, gh = 24;
+    s_oled.drawFrame(gx, gy, gw, gh);
+    auto Y = [&](int v) { return gy + gh - 2 - (v - lo) * (gh - 3) / imax(1, hi - lo); };
+    if (32 > lo && 32 < hi) for (int k = gx + 1; k < gx + gw - 1; k += 3) s_oled.drawPixel(k, Y(32));
+    for (int i = 1; i < s_d.tempsN; ++i)
+      s_oled.drawLine(gx + 1 + (i - 1) * (gw - 3) / (s_d.tempsN - 1), Y(s_d.temps[i - 1]), gx + 1 + i * (gw - 3) / (s_d.tempsN - 1), Y(s_d.temps[i]));
+  }
+}
+
+static void pageWind()
+{
+  char b[48];
+  s_oled.setFont(u8g2_font_5x8_tr);
+  if (s_d.haveNow) snprintf(b, sizeof(b), "Wind %d mph %s  gust %d", s_d.windNow, compass(s_d.windDir), s_d.gustNow);
+  else snprintf(b, sizeof(b), "Wind (mph): looking it up");
+  fit(0, 17, b);
+  int wmax = imax(15, imax(smax(s_d.gust, 15), smax(s_d.wind, 15)) + 2);
+  graph(s_d.gust, 0, 19, 128, 18, 0, wmax, true);
+  graph(s_d.wind, 0, 19, 128, 18, 0, wmax, false);
+  if (s_d.haveNow) snprintf(b, sizeof(b), "Hum %d%%  dew %dF  %.2fin", s_d.rh, s_d.dew, s_d.inHg);
+  else snprintf(b, sizeof(b), "Humidity (%%)");
+  fit(0, 45, b);
+  graph(s_d.hum, 0, 47, 128, 17, 0, 100, false);
+}
+
+static void pageSun()
+{
+  char b[48];
+  s_oled.setFont(u8g2_font_5x8_tr);
+  int kp = slast(s_d.kp);
+  std::string l = "";
+  if (s_d.sfi > 0) { snprintf(b, sizeof(b), "SFI %d", s_d.sfi); l += b; }
+  if (kp != -99999) { snprintf(b, sizeof(b), "  Kp %.1f", kp / 10.0); l += b; }
+  if (s_d.xray[0]) { l += "  "; l += s_d.xray; }
+  if (l.empty()) l = "Sun: looking it up";
+  fit(0, 18, l.c_str());
+  if (s_d.hfOk) {                                          // the six bands; Good ones in reverse
+    static const char * BAND[6] = { "160", "80", "40", "20", "15", "10" };
+    for (int i = 0; i < 6; ++i) {
+      int x = (i % 3) * 43, y = 29 + (i / 3) * 10;
+      snprintf(b, sizeof(b), "%s %s", BAND[i], s_d.hf[i]);
+      bool good = !strcmp(s_d.hf[i], "Good");
+      if (good) { s_oled.drawBox(x, y - 8, 42, 10); s_oled.setDrawColor(0); }
+      fit(x + 1, y, b);
+      s_oled.setDrawColor(1);
+    }
+  } else { s_oled.setFont(u8g2_font_6x12_tr); centre("HF: waiting for data", 36); s_oled.setFont(u8g2_font_5x8_tr); }
+  // Kp over 4 days, with a dotted storm line at 5
+  graph(s_d.kp, 0, 47, 128, 17, 0, 90, true);
+  for (int k = 1; k < 127; k += 3) s_oled.drawPixel(k, 47 + 17 - 2 - 50 * 14 / 90);
+}
+
+static void pageStorms()
+{
+  char b[64];
+  s_oled.setFont(u8g2_font_5x8_tr);
+  int capeMax = smax(s_d.cape, 0), thun = 0;
+  for (int i = 0; i < s_d.thun.n; ++i) thun += s_d.thun.ok[i] && s_d.thun.v[i];
+  if (thun) snprintf(b, sizeof(b), "Storms: %d thunder spells", thun);
+  else snprintf(b, sizeof(b), capeMax >= 1000 ? "Storms: unstable air" : "Storms: none in 4 days");
+  fit(0, 17, b);
+  int dl = slast(s_d.duct);
+  if (dl == -99999) snprintf(b, sizeof(b), "Tropo: -");
+  else snprintf(b, sizeof(b), "Tropo: %s %d N/km", dl <= -157 ? "DUCTING" : dl <= -79 ? "enhanced" : dl >= 0 ? "sub-refr." : "normal", dl);
+  fit(0, 26, b);
+  // alerts, wrapped
+  int y = 36;
+  if (s_d.alertN == -1) s_oled.drawStr(0, y, "Alerts: looking them up");
+  else if (s_d.alertN == -2) s_oled.drawStr(0, y, "Alerts: NWS not reachable");
+  else if (s_d.alertN == 0) s_oled.drawStr(0, y, "No NWS alerts");
+  else {
+    for (int i = 0; i < s_d.alertN && y <= 63; ++i) {
+      const char * a = s_d.alert[i];
+      while (*a && y <= 63) {
+        int n = strlen(a); if (n > 25) { n = 25; while (n > 10 && a[n] != ' ') --n; }
+        snprintf(b, sizeof(b), "%s%.*s", a == s_d.alert[i] ? "! " : "  ", n, a);
+        s_oled.drawStr(0, y, b); y += 9;
+        a += n; while (*a == ' ') ++a;
+      }
+    }
+  }
+}
+
+static void pageRadio()
+{
+  char b[48];
+  s_oled.setFont(u8g2_font_5x8_tr);
+  if (!rf::radioOk()) { s_oled.setFont(u8g2_font_6x12_tr); centre("No 900 MHz radio", 34); }
+  else if (!s_specOk) { s_oled.setFont(u8g2_font_6x12_tr); centre("Radio idle", 30); s_oled.setFont(u8g2_font_5x8_tr); centre("open RF Sweep on the desktop", 44); }
+  else {
+    snprintf(b, sizeof(b), "NF %.0f dBm  busy %.1f%%%s", s_nf, s_occ * 100, s_over ? " OVL" : "");
+    fit(0, 17, b);
+    // one column per channel (902.2 .. 927.8 MHz), -130 .. -50 dBm
+    const int gy = 19, gh = 36;
+    for (int c = 0; c < rf::NCH && c < 128; ++c) {
+      float v = s_spec[c]; int hgt = (int)((v + 130) * gh / 80); hgt = hgt < 0 ? 0 : hgt > gh ? gh : hgt;
+      if (hgt) s_oled.drawVLine(c, gy + gh - hgt, hgt);
+    }
+    int nfy = gy + gh - (int)((s_nf + 130) * gh / 80);
+    if (nfy > gy && nfy < gy + gh) for (int k = 0; k < 128; k += 4) s_oled.drawPixel(k, nfy);
+  }
+  // GPS on the bottom line
+  {
+    std::lock_guard<std::mutex> lk(rf::gMx);
+    if (rf::gGnss.present) {
+      if (rf::gGnss.fix) snprintf(b, sizeof(b), "GPS %.4f %.4f %ds", rf::gGnss.lat, rf::gGnss.lon, rf::gGnss.sats);
+      else snprintf(b, sizeof(b), "GPS: no fix yet, %d sats", rf::gGnss.satsInView);
+    } else snprintf(b, sizeof(b), "902        915        928");
+  }
+  s_oled.setFont(u8g2_font_5x8_tr);
+  fit(0, 63, b);
+}
+
+bool storageFree(int64_t & freeB, bool & sd);   // core.cpp
+static void pageSystem()
+{
+  char b[48];
+  s_oled.setFont(u8g2_font_5x8_tr);
+  size_t in = heap_caps_get_free_size(MALLOC_CAP_INTERNAL), ps = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+  snprintf(b, sizeof(b), "RAM   %uK free", (unsigned)(in / 1024)); s_oled.drawStr(0, 18, b);
+  if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM)) { snprintf(b, sizeof(b), "PSRAM %u.%uM free", (unsigned)(ps >> 20), (unsigned)((ps & 0xFFFFF) * 10 >> 20)); s_oled.drawStr(0, 27, b); }
+  int64_t fb = 0; bool sd = false;
+  if (storageFree(fb, sd)) {
+    if (fb >= (1LL << 30)) snprintf(b, sizeof(b), "%s %u.%uG free", sd ? "SD   " : "Flash", (unsigned)(fb >> 30), (unsigned)((fb % (1LL << 30)) * 10 >> 30));
+    else if (fb >= (1LL << 20)) snprintf(b, sizeof(b), "%s %u.%uM free", sd ? "SD   " : "Flash", (unsigned)(fb >> 20), (unsigned)((fb & 0xFFFFF) * 10 >> 20));
+    else snprintf(b, sizeof(b), "%s %uK free", sd ? "SD   " : "Flash", (unsigned)(fb >> 10));
+    s_oled.drawStr(0, 36, b);
+  }
+  if (netConnected()) snprintf(b, sizeof(b), "Wi-Fi %d dBm  %.12s", (int)WiFi.RSSI(), WiFi.SSID().c_str());
+  else snprintf(b, sizeof(b), "Wi-Fi: hotspot only");
+  fit(0, 45, b);
+  uint32_t up = millis() / 1000;
+  snprintf(b, sizeof(b), "Up %ud %uh %02um   %.0fC", (unsigned)(up / 86400), (unsigned)(up / 3600 % 24), (unsigned)(up / 60 % 60), temperatureRead());
+  s_oled.drawStr(0, 54, b);
+  if (s_d.unread) { snprintf(b, sizeof(b), "%d new message%s", s_d.unread, s_d.unread == 1 ? "" : "s"); s_oled.drawStr(0, 63, b); }
+  else { snprintf(b, sizeof(b), "TidyOS Pro %s", TIDYOS_VERSION); s_oled.drawStr(0, 63, b); }
+}
+
+static void pageStopwatch()
+{
+  char b[24];
+  swFmt(b, sizeof(b), swMs(), true);
+  s_oled.setFont(u8g2_font_logisoso22_tn);
+  centre(b, 40);
+  s_oled.setFont(u8g2_font_5x8_tr);
+  centre(s_swRun ? "running" : swMs() ? "stopped" : "ready", 50);
+  centre("hold: 1s go/stop  3s reset", 62);
+}
+
+static void draw(int page, bool held, uint32_t pageAt, bool resetHint)
+{
+  // the data the pages show
+  deskSnapshot(s_d);
+  {
+    std::lock_guard<std::mutex> lk(rf::gMx);
+    s_specOk = rf::gSpec && rf::mode() == rf::Mode::Sweep;
+    if (s_specOk) { memcpy(s_spec, rf::gSpec->avg, sizeof(s_spec)); s_nf = rf::gSpec->noiseFloor; s_occ = rf::gSpec->occupancy; s_over = rf::gSpec->overload; }
+  }
+  s_oled.clearBuffer();
+  // header: page name, then the stopwatch (if running), HOLD and the page number
+  s_oled.setFont(u8g2_font_5x8_tr);
+  s_oled.drawStr(0, 7, TITLE[page]);
+  char r[24]; r[0] = 0;
+  if (s_swRun && page != P_STOPWATCH) { swFmt(r, sizeof(r), swMs(), false); strcat(r, " "); }
+  char pg[12]; snprintf(pg, sizeof(pg), "%s%d/%d", held ? "HOLD " : "", page + 1, P_COUNT);
+  strlcat(r, pg, sizeof(r));
+  s_oled.drawStr(128 - s_oled.getStrWidth(r), 7, r);
+  s_oled.drawHLine(0, 9, 128);
+  switch (page) {
+    case P_ADDRESS: pageAddress(); break;
+    case P_CLOCK: pageClock(); break;
+    case P_WEATHER: pageWeather(); break;
+    case P_WIND: pageWind(); break;
+    case P_SUN: pageSun(); break;
+    case P_STORMS: pageStorms(); break;
+    case P_RADIO: pageRadio(); break;
+    case P_SYSTEM: pageSystem(); break;
+    case P_STOPWATCH: pageStopwatch(); break;
+  }
+  if (resetHint) { s_oled.setDrawColor(0); s_oled.drawBox(14, 22, 100, 20); s_oled.setDrawColor(1); s_oled.drawFrame(14, 22, 100, 20); s_oled.setFont(u8g2_font_6x12_tr); centre("Reset", 36); }
+  // time to the next page: a short bar under the header
+  if (!held) { int w = (int)((millis() - pageAt) * 128 / PAGE_MS); s_oled.setDrawColor(0); s_oled.drawHLine(w, 9, 128 - w); s_oled.setDrawColor(1); }
+  s_oled.sendBuffer();
+}
 
 static void oledTask(void *)
 {
-  uint32_t wokeAt = millis();
-  bool asleep = false, prgWas = false;
+  int page = P_ADDRESS;                                    // start-up: show where to find the desktop first
+  bool held = false, dimmed = false;
+  uint32_t pageAt = millis(), lastPress = millis(), lastDraw = 0;
+  bool prgWas = false, swallow = false, longDone = false, resetDone = false;
+  uint32_t downAt = 0, tapAt = 0; int taps = 0;
+  uint32_t resetShowUntil = 0;
   for (;;) {
+    uint32_t now = millis();
     bool prg = digitalRead(PIN_PRG) == LOW;
-    if (prg && !prgWas) { wokeAt = millis(); if (asleep) { s_oled.setPowerSave(0); asleep = false; } }
-    prgWas = prg;
-    if (!asleep && millis() - wokeAt > AWAKE_MS) { s_oled.setPowerSave(1); asleep = true; }
-    if (!asleep) {
-      char l[4][32];
-      snprintf(l[0], 32, "TidyOS Pro %s", TIDYOS_VERSION);
-      if (netConnected()) snprintf(l[1], 32, "%s", WiFi.localIP().toString().c_str());
-      else snprintf(l[1], 32, "Wi-Fi %s", boardId().c_str());
-      if (netConnected()) snprintf(l[2], 32, "%.21s.local", boardHost().c_str());
-      else snprintf(l[2], 32, "pw %s  192.168.4.1", SCREEN_AP_PASS);
-      {
-        std::lock_guard<std::mutex> lk(rf::gMx);
-        if (rf::gSpec && rf::mode() != rf::Mode::Off) snprintf(l[3], 32, "%.0fdBm %.1f%% %s", rf::gSpec->noiseFloor, rf::gSpec->occupancy * 100,
-                                                            rf::gGnss.present ? (rf::gGnss.fix ? "GPS ok" : "GPS ..") : "");
-        else snprintf(l[3], 32, "900MHz idle %s", rf::gGnss.present ? (rf::gGnss.fix ? "GPS ok" : "GPS ..") : "");
-      }
-      s_oled.clearBuffer();
-      s_oled.setFont(u8g2_font_7x14B_tr); s_oled.drawStr(0, 12, l[0]);
-      s_oled.setFont(u8g2_font_6x12_tr);
-      s_oled.drawStr(0, 28, l[1]); s_oled.drawStr(0, 42, l[2]); s_oled.drawStr(0, 58, l[3]);
-      s_oled.sendBuffer();
+    bool redraw = false;
+    if (prg && !prgWas) {                                    // pressed
+      downAt = now; longDone = resetDone = false;
+      lastPress = now;
+      if (dimmed) { s_oled.setContrast(BRIGHT); dimmed = false; swallow = true; }
     }
-    vTaskDelay(pdMS_TO_TICKS(asleep ? 100 : 1000));
+    if (prg && !swallow && page == P_STOPWATCH) {           // held on the stopwatch page
+      if (!longDone && now - downAt >= LONG_MS) {
+        longDone = true;
+        if (s_swRun) { s_swAcc += now - s_swStart; s_swRun = false; } else { s_swStart = now; s_swRun = true; }
+        redraw = true;
+      }
+      if (!resetDone && now - downAt >= RESET_MS) {
+        resetDone = true; s_swRun = false; s_swAcc = 0; resetShowUntil = now + 800; redraw = true;
+      }
+    }
+    if (!prg && prgWas) {                                    // let go
+      if (swallow) swallow = false;
+      else if (now - downAt < LONG_MS && !longDone) { taps++; tapAt = now; }
+    }
+    prgWas = prg;
+    if (taps >= 2) {                                         // double tap: next page
+      taps = 0; page = (page + 1) % P_COUNT; pageAt = now; redraw = true;
+    } else if (taps == 1 && !prg && now - tapAt > TAP_GAP_MS) {   // single tap: hold / roll
+      taps = 0; held = !held; pageAt = now; redraw = true;
+    }
+    if (!held && now - pageAt >= PAGE_MS) { page = (page + 1) % P_COUNT; pageAt = now; redraw = true; }
+    if (!dimmed && now - lastPress > DIM_MS) { s_oled.setContrast(DIM); dimmed = true; }
+    uint32_t every = page == P_STOPWATCH && s_swRun ? 100 : page == P_RADIO ? 300 : 250;
+    if (redraw || now - lastDraw >= every) { draw(page, held, pageAt, now < resetShowUntil); lastDraw = now; }
+    vTaskDelay(pdMS_TO_TICKS(20));
   }
 }
 
@@ -57,8 +385,8 @@ void oledBegin()
   delay(50);
   pinMode(PIN_PRG, INPUT_PULLUP);
   s_oled.begin();
-  s_oled.setContrast(160);
-  xTaskCreatePinnedToCore(oledTask, "oled", 6144, nullptr, 1, nullptr, 0);
+  s_oled.setContrast(BRIGHT);
+  xTaskCreatePinnedToCore(oledTask, "oled", 8192, nullptr, 1, nullptr, 0);
 }
 #else
 void oledBegin() {}

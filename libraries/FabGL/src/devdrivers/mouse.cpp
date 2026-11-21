@@ -75,7 +75,7 @@ void Mouse::begin(int PS2Port)
   PS2Device::begin(PS2Port);
   reset();
   m_receivedPacket = xQueueCreate(1, sizeof(MousePacket));
-  xTaskCreate(&mouseUpdateTask, "", 1600, this, 5, &m_mouseUpdateTask);
+  xTaskCreate(&mouseUpdateTask, "fabgl-mouse", 3072, this, 5, &m_mouseUpdateTask);
   m_area = Size(0, 0);
 }
 

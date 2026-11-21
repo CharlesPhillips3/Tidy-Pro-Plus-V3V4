@@ -377,9 +377,9 @@ uiApp & uiApp::runAsync(BitmappedDisplayController * displayController, int task
   m_asyncRunWait      = nullptr;
 
   if (CoreUsage::busiestCore() == -1)
-    xTaskCreate(&asyncRunTask, "", taskStack, this, 5, nullptr);
+    xTaskCreate(&asyncRunTask, "fabgl-ui", taskStack, this, 5, nullptr);
   else
-    xTaskCreatePinnedToCore(&asyncRunTask, "", taskStack, this, 5, nullptr, CoreUsage::quietCore());
+    xTaskCreatePinnedToCore(&asyncRunTask, "fabgl-ui", taskStack, this, 5, nullptr, CoreUsage::quietCore());
 
   return *this;
 }

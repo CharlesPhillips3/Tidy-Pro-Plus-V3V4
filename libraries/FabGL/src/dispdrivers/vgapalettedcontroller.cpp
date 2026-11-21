@@ -184,7 +184,7 @@ void VGAPalettedController::setResolution(VGATimings const& timings, int viewPor
 #endif
 
   if (m_primitiveExecTask == nullptr) {
-    xTaskCreatePinnedToCore(primitiveExecTask, "" , FABGLIB_VGAPALETTEDCONTROLLER_PRIMTASK_STACK_SIZE, this, FABGLIB_VGAPALETTEDCONTROLLER_PRIMTASK_PRIORITY, &m_primitiveExecTask, CoreUsage::quietCore());
+    xTaskCreatePinnedToCore(primitiveExecTask, "fabgl-draw" , FABGLIB_VGAPALETTEDCONTROLLER_PRIMTASK_STACK_SIZE, this, FABGLIB_VGAPALETTEDCONTROLLER_PRIMTASK_PRIORITY, &m_primitiveExecTask, CoreUsage::quietCore());
   }
 
   resumeBackgroundPrimitiveExecution();
