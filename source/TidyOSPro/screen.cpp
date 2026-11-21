@@ -72,7 +72,7 @@ canvas{background:#00aaaa;touch-action:none;outline:none;cursor:default}
 <script>var MP=8081;
 var c=document.getElementById('c'),g=c.getContext('2d'),o=document.createElement('canvas');o.width=640;o.height=480;window.tidyScreen=o;
 var og=o.getContext('2d'),img=og.createImageData(640,480),px=new Uint32Array(img.data.buffer),ZK=1;
-var home=null,ws=null,bpp=2,pal=new Uint32Array(8),dirty=false,rx=0,kicked=false,down={},mx=-1,my=-1,mb=0,mDirty=false;
+var lostAt=0,home=null,ws=null,bpp=2,pal=new Uint32Array(8),dirty=false,rx=0,kicked=false,down={},mx=-1,my=-1,mb=0,mDirty=false;
 var msg=document.getElementById('msg'),mt=document.getElementById('mt'),btn=document.getElementById('mb'),st=document.getElementById('st'),kb=document.getElementById('kb');
 function show(t,b){mt.textContent=t;btn.style.display=b?'':'none';msg.style.display=t?'flex':'none';}
 // sizing: whole device pixels when that fills most of the window (every pixel the same size = crisp text),
@@ -90,10 +90,10 @@ function fit(){var r=window.devicePixelRatio||1,w=innerWidth,h=innerHeight-36,s=
 addEventListener('resize',fit);
 function send(a){if(ws&&ws.readyState==1)ws.send(new Uint8Array(a));}
 function connect(){
- kicked=false;show('Connecting to TidyOS Pro...');
+ kicked=false;if(!lostAt)show('Connecting to TidyOS Pro...');
  ws=new WebSocket('ws://'+location.host+'/ws');ws.binaryType='arraybuffer';
- var w0=ws;setTimeout(function(){if(w0.readyState==0)w0.close();},3000);   // a board that's restarting can leave this hanging: give up and try again
- ws.onopen=function(){show('');st.textContent='Connected';c.focus();var t=Math.floor(Date.now()/1000);send([6,t&255,t>>8&255,t>>16&255,t>>>24]);wxAt=0;setTimeout(weather,1500);ctAt=0;setTimeout(cityTemps,2500);nwAt=0;setTimeout(news,3000);};
+ var w0=ws;setTimeout(function(){if(w0.readyState==0)w0.close();},2000);   // a board that's restarting can leave this hanging: give up and try again (every second or so)
+ ws.onopen=function(){lostAt=0;show('');st.textContent='Connected';c.focus();var t=Math.floor(Date.now()/1000);send([6,t&255,t>>8&255,t>>16&255,t>>>24]);wxAt=0;setTimeout(weather,1500);ctAt=0;setTimeout(cityTemps,2500);nwAt=0;setTimeout(news,3000);};
  ws.onmessage=function(e){var d=new Uint8Array(e.data);rx+=d.length;
   if(d[0]==1){bpp=d[1];for(var i=0;i<d[2];i++)pal[i]=0xff000000|d[5+i*3]<<16|d[4+i*3]<<8|d[3+i*3];}
   else if(d[0]==2){var y=d[1]|d[2]<<8,n=d[3],o=4,rb=bpp==1?80:bpp==2?160:240;
@@ -110,10 +110,12 @@ function connect(){
    if(location.hostname!=home.ip&&location.hostname.slice(-6)!='.local'){var hn=(home.host||'')+'.local';hb.innerHTML='TidyOS is on <b></b> now. Switch this device to that Wi-Fi, then open <a href="http://'+home.ip+'/">http://'+home.ip+'</a>'+(home.host?' or <a href="http://'+hn+'/">http://'+hn+'</a>':'');hb.querySelector('b').textContent=home.ssid;hb.style.display='block';}
    else hb.style.display='none';}};
  ws.onclose=function(){st.textContent='Disconnected';if(!kicked){
-  var t='Lost connection - trying again...';
+  if(!lostAt)lostAt=Date.now();var secs=Math.round((Date.now()-lostAt)/1000);
+  var t='TidyOS Pro is restarting (boot menu, then TidyOS Pro, or an update) - reconnecting every second... '+secs+' s';
+  if(secs>90)t='Still no answer after '+secs+' s - trying every second. Check the board is on and on this Wi-Fi.';
   if(location.hostname=='192.168.4.1')t='Lost the TidyOS hotspot - trying again...\nIf TidyOS just joined your Wi-Fi, switch this device to '+(home?home.ssid:'that Wi-Fi')+' and open http://'+(home?home.ip:'the address on its screen');
   else if(home&&home.host)t+='\nIf you turned on the TidyOS hotspot: join Wi-Fi '+('TidyOS-'+home.host.slice(7).toUpperCase())+' (password tidyos123) and open http://192.168.4.1';
-  show(t);setTimeout(connect,2000);}};
+  show(t);setTimeout(connect,1000);}};
 }
 btn.onclick=function(){connect();};
 function frame(){if(dirty){og.putImageData(img,0,0);g.imageSmoothingEnabled=false;g.drawImage(o,0,0,640*ZK,480*ZK);dirty=false;}

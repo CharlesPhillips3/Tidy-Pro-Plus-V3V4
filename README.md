@@ -26,7 +26,11 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.3.5. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.3.6. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.3.6
+- The browser page reconnects **every second** when the board restarts (boot menu, update, Restart), and says how long
+  it's been, so it picks up the update screen and the new TidyOS Pro straight away.
 
 ### 3.3.5
 - **Updates say what they're doing.** In update mode the OLED shows each step (joining Wi-Fi, checking GitHub,
