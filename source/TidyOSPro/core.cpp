@@ -1723,7 +1723,7 @@ void setup()
   Serial.println("\n[TidyOS Pro] " TIDYOS_VERSION " (Heltec V4) starting");
 #ifdef TIDYOS_V4
   // dual boot: the next restart goes back to the boot menu (TidyBoot), which starts the last
-  // choice after its 10 s countdown. Without a boot menu this does nothing.
+  // choice after its 5 s countdown. Without a boot menu this does nothing.
   if (const esp_partition_t * menu = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_FACTORY, "menu"))
     esp_ota_set_boot_partition(menu);
 #endif

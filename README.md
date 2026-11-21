@@ -26,7 +26,15 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.1.3. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.1.4. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.1.4
+- **HF bands now include 160 m and 80 m.** They're rated from whether it's dark where you are (the sun's height at
+  the weather lookup's location) and Kp, since solar flux doesn't help them: 160 m opens after dark when Kp is low,
+  80 m is *Local* (near-vertical, a few hundred miles) by day and *Good* at night when it's quiet.
+- **Boot menu: 5 seconds**, with the system used last already picked.
+- **Serial console on the web flasher page** (115200 baud): timestamps, crash lines in red, Restart board, Save log,
+  and a line to send text. The flasher's buttons close it when they need the port, and it opens again after an install.
 
 ### 3.1.3
 - The bottom bar also shows free storage: the SD card's when it's on, otherwise TidyOS Pro's own flash area.
@@ -38,7 +46,7 @@ Version 3.1.3. Settings → Check for updates gets updates from this repo, **wit
   `ffat` area The Shelf uses; it's set up first if it was never used, and needs about 3 MB free). The boot menu now
   looks for `/tidyos/update.bin` there as well as on the card, checks its SHA-256 and installs it.
   Boards from before 3.1.2 need one install from the web flasher with *TidyOS Pro* and *Boot menu* ticked.
-- **Boot menu**: 10 seconds instead of 30, with the system used last already picked.
+- **Boot menu**: 5 seconds instead of 30, with the system used last already picked.
 - The bottom bar shows the two kinds of free RAM separately: the chip's own and the PSRAM.
 
 ### 3.1.1 fixes (first run on a real V4)
@@ -57,7 +65,7 @@ Version 3.1.3. Settings → Check for updates gets updates from this repo, **wit
 TidyOS Pro turns a Heltec WiFi LoRa 32 V4 into a pocket field computer for 900 MHz and AMI work.
 It's [TidyOS](https://github.com/hardwaremack-prog/TidyOS-ESP32) ported to the V4's ESP32-S3, with
 tools for its SX1262 radio and GNSS module. The TidyOS desktop shows up in any browser on the same Wi-Fi.
-It can also share the board with [The Shelf](https://github.com/hardwaremack-prog/The-Shelf-Heltec-V4900mhzMesh) (**dual boot**, with a 10-second boot menu on the OLED).
+It can also share the board with [The Shelf](https://github.com/hardwaremack-prog/The-Shelf-Heltec-V4900mhzMesh) (**dual boot**, with a 5-second boot menu on the OLED).
 
 > Status: 3.0.0, first release. Everything builds for the V4 and V4-R8. It has **not been run on a board yet**,
 > and the RF numbers haven't been compared with a calibrated instrument. Treat readings as indications until they have been.
@@ -81,7 +89,7 @@ It can also share the board with [The Shelf](https://github.com/hardwaremack-pro
 - **Wind and gusts** (mph, with direction) and **humidity** (with dew point)
 - **Storms**: CAPE (how unstable the air is), with the hours the weather model had thunderstorms marked in red
 - **Tropo ducting**: the refractivity gradient from the ground to the 925 hPa level, in N/km. About −40 is normal, −79 or lower is enhanced, and −157 or lower is a **duct**, when 900 MHz signals (meters, interference) carry much further than usual. Worked out from Open-Meteo's forecast model for your location.
-- **Space weather**: solar flux (SFI), Kp with a 4-day bar graph, the GOES X-ray class, and an HF band estimate (the usual SFI/Kp rule of thumb)
+- **Space weather**: solar flux (SFI), Kp with a 4-day bar graph, the GOES X-ray class, and an HF band estimate for 160, 80, 40, 20, 15 and 10 m (day/night and Kp for the low bands, the usual SFI/Kp rule of thumb for the high ones)
 - **NWS alerts** for your location (US)
 - **This board's own** 900 MHz noise floor, band occupancy and GPS status, live
 - A day/night **grey-line map** with a you-are-here marker
@@ -132,7 +140,7 @@ The flash is split so both systems fit (16 MB):
 0x880000  ffat    7.4 MB  The Shelf's internal storage
 ```
 
-Every start goes through **TidyBoot**. It shows *Start which one?* on the OLED for 10 seconds: a short press of PRG
+Every start goes through **TidyBoot**. It shows *Start which one?* on the OLED for 5 seconds: a short press of PRG
 switches, holding PRG for a second starts the one shown, and if you do nothing it starts the last one used. With only one
 system installed it starts that one straight away, and waking from deep sleep goes straight back to the last one.
 Each system sends the next restart back to the menu.

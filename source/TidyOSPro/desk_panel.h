@@ -444,8 +444,28 @@ static int drawFieldPanel(Canvas * cv, Rect r, int x, int y)
   if (s_fSfi > 0 && kp10 != -99999) {
     float kp = kp10 / 10.0f;
     auto q = [&](int need) { return kp >= 5 ? "Poor" : s_fSfi >= need + 30 ? "Good" : s_fSfi >= need ? "Fair" : "Poor"; };
-    snprintf(b, sizeof(b), "HF  40m %s  20m %s  15m %s  10m %s", kp >= 5 ? "Fair" : "Good", q(70), q(100), q(120));
+    // 160 m and 80 m don't follow the solar flux: the sun's D layer soaks them up by day, so they
+    // open after dark, and a stirred-up field (high Kp) brings noise and absorption. So: the sun's
+    // height where you are (from the weather lookup; without it, the clock), then Kp.
+    float sunH;                                   // sine of the sun's height here
+    {
+      time_t now2 = time(nullptr); struct tm u; gmtime_r(&now2, &u);
+      float doy = u.tm_yday + (u.tm_hour + u.tm_min / 60.0f) / 24.0f;
+      float decl = -23.44f * cosf(2 * PI / 365.0f * (doy + 10)) * PI / 180;
+      float sunLon = -15.0f * (u.tm_hour + u.tm_min / 60.0f - 12) * PI / 180;
+      if (s_wx.haveLoc) {
+        float la = s_wx.lat * PI / 180, lo = s_wx.lon * PI / 180;
+        sunH = sinf(la) * sinf(decl) + cosf(la) * cosf(decl) * cosf(lo - sunLon);
+      } else { struct tm l; localtime_r(&now2, &l); sunH = (l.tm_hour >= 7 && l.tm_hour < 17) ? 0.5f : (l.tm_hour >= 19 || l.tm_hour < 5) ? -0.5f : 0.0f; }
+    }
+    bool night = sunH < -0.1f, day = sunH > 0.1f;          // in between: dusk or dawn (the grey line)
+    const char * b160 = day ? "Poor" : kp >= 4 ? "Poor" : night ? (kp < 3 ? "Good" : "Fair") : "Fair";
+    const char * b80  = day ? (kp >= 5 ? "Poor" : "Local") : kp >= 5 ? "Poor" : night ? (kp < 4 ? "Good" : "Fair") : "Fair";
+    snprintf(b, sizeof(b), "HF  160m %s   80m %s   40m %s", b160, b80, kp >= 5 ? "Fair" : "Good");
     cv->drawText(&FONT_std_12, x, y + 13, b);
+    snprintf(b, sizeof(b), "       20m %s   15m %s   10m %s", q(70), q(100), q(120));
+    cv->drawText(&FONT_std_12, x, y + 26, b);
+    y += 13;
   }
   y += 27;
   drawMini(cv, x, y, PANEL_W - 22, 16, s_fKp, 0, 90, kp10 >= 50 ? red : T.accent, true, 50, red);

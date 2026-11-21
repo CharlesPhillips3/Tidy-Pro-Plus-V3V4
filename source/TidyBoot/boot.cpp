@@ -5,7 +5,7 @@
 //        /tidyos/update.bin + update.sha   -> the TidyOS Pro slot   (TidyOS Pro's own updater;
 //                                              on the card, or in the board's storage with no card)
 //        /.shelf/update-app.bin            -> The Shelf's slot       (The Shelf's own updater)
-//   2. shows the menu on the OLED for 10 seconds, with the one used last already picked:
+//   2. shows the menu on the OLED for 5 seconds, with the one used last already picked:
 //        PRG short press = switch between The Shelf and TidyOS Pro
 //        PRG held for 1 second = start the one picked now
 //      and then starts the one picked (the last one used, unless you change it). Whatever
@@ -37,7 +37,7 @@
 #else
   #define PIN_VEXT 36
 #endif
-#define COUNTDOWN_S 10
+#define COUNTDOWN_S 5
 
 static U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0, OLED_RST, OLED_SCL, OLED_SDA);
 static SPIClass sdSpi(FSPI);
