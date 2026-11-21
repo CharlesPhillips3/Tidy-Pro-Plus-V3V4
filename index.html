@@ -227,6 +227,7 @@ PRG: switch  hold: go  27s</div>
   <p>Puts a backup from step 1 back on the board exactly as it was, whatever is on it now. Restoring a backup made before TidyOS Pro gives you the board as it was then (for example The Shelf on its own).</p>
   <div class="card">
     <button class="btn alt" id="fbRestore">Restore from file&hellip;</button>
+    <button class="btn" id="fbRestoreGo" hidden></button>
     <input type="file" id="fbFile" accept=".gz,.bin" hidden>
     <small>Use a backup from the same kind of board. The microSD card isn't touched.</small>
     <div class="fb-status" id="rsStatus" hidden><div class="fb-bar"><div id="rsFill"></div></div><div id="rsMsg"></div></div>
@@ -241,7 +242,7 @@ PRG: switch  hold: go  27s</div>
 // Whole-board flash backup and restore over USB, with esptool-js.
 const ESPTOOL = 'https://unpkg.com/esptool-js@0.5.7/bundle.js';
 const $ = id => document.getElementById(id);
-const busy = on => { $('fbBackup').disabled = $('fbRestore').disabled = $('pkGo').disabled = on; };
+const busy = on => { $('fbBackup').disabled = $('fbRestore').disabled = $('fbRestoreGo').disabled = $('pkGo').disabled = on; };
 let at = 'fb';      // which card shows the progress: fb = backup, rs = restore
 const show = (msg, frac) => {
   $(at + 'Status').hidden = false; $(at + 'Msg').textContent = msg;
@@ -254,9 +255,11 @@ if (!('serial' in navigator)) {
   show('Open this page in Chrome or Edge on a computer to back up or restore over USB.');
 }
 
-async function connect() {
+// Chrome only shows its port list straight after a click, so every button asks for the port
+// first, before downloading or reading anything, and then hands it to connect().
+const pickPort = () => navigator.serial.requestPort();
+async function connect(port) {
   const { ESPLoader, Transport } = await import(ESPTOOL);
-  const port = await navigator.serial.requestPort();
   const transport = new Transport(port, true);
   const terminal = { clean() {}, writeLine() {}, write() {} };
   const loader = new ESPLoader({ transport, baudrate: 921600, romBaudrate: 115200, terminal });
@@ -278,9 +281,11 @@ function friendly(e) {
 }
 
 $('fbBackup').onclick = async () => {
-  at = 'fb'; let c; busy(true);
+  at = 'fb'; let c, port;
+  try { port = await pickPort(); } catch (e) { show(friendly(e)); return; }
+  busy(true);
   try {
-    c = await connect();
+    c = await connect(port);
     const t0 = Date.now();
     const data = await c.loader.readFlash(0, c.bytes, (_p, got, total) => {
       const s = (Date.now() - t0) / 1000, left = got ? s * (total - got) / got : 0;
@@ -305,18 +310,31 @@ $('fbBackup').onclick = async () => {
   finally { if (c) await done(c); busy(false); }
 };
 
+let pending = null;      // the backup chosen for Restore, waiting for the "write it" click
 $('fbRestore').onclick = () => { at = 'rs'; $('fbFile').click(); };
 $('fbFile').onchange = async () => {
   const f = $('fbFile').files[0]; $('fbFile').value = '';
   if (!f) return;
-  let c; busy(true);
+  at = 'rs'; pending = null; $('fbRestoreGo').hidden = true;
   try {
     show('Opening ' + f.name + '…', 0);
     let data = new Uint8Array(await f.arrayBuffer());
     if (data[0] === 0x1f && data[1] === 0x8b) data = new Uint8Array(await new Response(new Blob([data]).stream().pipeThrough(new DecompressionStream('gzip'))).arrayBuffer());
     if (data.length < 1048576 || data.length % 4096) throw new Error("That file isn't a whole-board backup");
-    if (!confirmRestore(f.name, data.length)) { show('Restore cancelled.'); return; }
-    c = await connect();
+    pending = { name: f.name, data };
+    $('fbRestoreGo').textContent = `Write ${f.name} to the board`; $('fbRestoreGo').hidden = false;
+    show(`${f.name} is ready (${mb(data.length)}). Click "Write ${f.name} to the board" and pick the board's port.`, 0);
+  } catch (e) { show(friendly(e)); }
+};
+$('fbRestoreGo').onclick = async () => {
+  if (!pending) return;
+  at = 'rs'; let c, port;
+  const { name: fname, data } = pending, f = { name: fname };
+  try { port = await pickPort(); } catch (e) { show(friendly(e)); return; }
+  if (!confirmRestore(f.name, data.length)) { show('Restore cancelled.'); return; }
+  busy(true);
+  try {
+    c = await connect(port);
     if (data.length > c.bytes) throw new Error(`That backup is ${mb(data.length)} but this board's flash is ${mb(c.bytes)}. Use a backup from the same kind of board`);
     let bin = '';
     for (let i = 0; i < data.length; i += 0x8000) bin += String.fromCharCode.apply(null, data.subarray(i, i + 0x8000));
@@ -332,6 +350,7 @@ $('fbFile').onchange = async () => {
     });
     await done(c); c = null;
     show(`Restored ${f.name}. The board has restarted.`, 1);
+    pending = null; $('fbRestoreGo').hidden = true;
   } catch (e) { show(friendly(e)); }
   finally { if (c) await done(c); busy(false); }
 };
@@ -509,8 +528,11 @@ $('pkGo').onclick = async () => {
   if (!r.writes.length) return;
   const appsLine = on('tidyos') ? `\n\nTidyOS Pro's desktop: ${PARTS.apps.filter(appOn).length} apps (${PARTS.apps.filter(appOn).map(a => a.name).join(', ')}).` : '';
   const list = r.writes.map(w => '• ' + w.what + (w.size ? ` (${sz(w.size)})` : w.fill >= 0x100000 ? ` (${sz(w.fill)})` : '')).join('\n');
+  at = 'pk';
+  let port;
+  try { port = await pickPort(); } catch (e) { show(friendly(e)); return; }
   if (!confirm(`Write these to the board?\n\n${list}${appsLine}\n\nAbout ${sz(r.free)} will be free afterwards. Back up first (step 1) if you might want the board as it is now.`)) return;
-  at = 'pk'; let c; busy(true);
+  let c; busy(true);
   try {
     show('Downloading…', 0);
     const fileArray = [];
@@ -525,7 +547,7 @@ $('pkGo').onclick = async () => {
       } else bin = '\xff'.repeat(w.fill);
       fileArray.push({ data: bin, address: w.at });
     }
-    c = await connect();
+    c = await connect(port);
     if (c.bytes < FLASH) throw new Error(`This board has ${sz(c.bytes)} of flash, but Tidy Pro Plus needs a 16 MB Heltec V4`);
     const lens = fileArray.map(f => f.data.length), total = lens.reduce((a, b) => a + b, 0);
     const before = i => lens.slice(0, i).reduce((a, b) => a + b, 0);
