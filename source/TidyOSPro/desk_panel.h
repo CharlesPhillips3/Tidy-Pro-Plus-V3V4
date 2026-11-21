@@ -550,6 +550,50 @@ static int drawFieldPanel(Canvas * cv, Rect r, int x, int y)
 }
 #endif
 
+// ---- rolling news headlines (Pro): one line above the map, moving a letter at a time.
+// The desktop's timer moves it on and repaints just this strip, so the rest of the panel isn't redrawn.
+static int s_tickPos = 0;           // which character of the joined headlines is at the left edge
+static Rect newsTickerRect() { Rect r = deskPanelRect(); return Rect(r.X1 + 1, r.Y2 - 142, r.X2 - 1, r.Y2 - 127); }
+static std::string newsTickerText()
+{
+  std::string t;
+  for (int i = 0; i < s_newsCount; ++i) { t += s_news[i]; t += "   +++   "; }
+  return t;
+}
+static void drawNewsTicker(Canvas * cv)
+{
+  Rect k = newsTickerRect();
+  cv->setBrushColor(T.win);
+  cv->fillRectangle(k.X1, k.Y1, k.X2, k.Y2);
+  if (!s_newsCount) return;
+  cv->setPenColor(T.text);
+  const char * tag = "NEWS";
+  int x0 = k.X1 + 9, tw = cv->textExtent(&FONT_std_12, tag);
+  cv->setBrushColor(T.accent); cv->setPenColor(T.win);
+  cv->fillRectangle(x0 - 3, k.Y1 + 1, x0 + tw + 2, k.Y2 - 1);
+  cv->drawText(&FONT_std_12, x0, k.Y1 + 2, tag);
+  cv->setBrushColor(T.win); cv->setPenColor(T.text);
+  std::string t = newsTickerText();
+  if (t.empty()) return;
+  int n = (int)t.size(), xs = x0 + tw + 8, xe = k.X2 - 8;
+  if (s_tickPos >= n) s_tickPos = 0;
+  std::string vis;                                            // from the current letter on, wrapping round, as much as fits
+  for (int i = 0; i < n * 2 && (int)vis.size() < 200; ++i) {
+    vis += t[(s_tickPos + i) % n];
+    if (xs + cv->textExtent(&FONT_std_12, vis.c_str()) > xe) { vis.pop_back(); break; }
+  }
+  cv->drawText(&FONT_std_12, xs, k.Y1 + 2, vis.c_str());
+}
+static void newsTickerStep()
+{
+  if (!s_newsCount) return;
+  std::string t = newsTickerText();
+  int n = (int)t.size();
+  if (!n) return;
+  s_tickPos = (s_tickPos + 1) % n;
+  while (s_tickPos < n && (t[s_tickPos] & 0xC0) == 0x80) s_tickPos = (s_tickPos + 1) % n;   // (never half a UTF-8 letter)
+}
+
 static void drawDeskPanel(Canvas * cv)
 {
   Rect r = deskPanelRect();
@@ -618,7 +662,8 @@ static void drawDeskPanel(Canvas * cv)
 #ifdef TIDYOS_PRO
   y = drawFieldPanel(cv, r, x, y);
   cv->setPenColor(T.text); cv->setBrushColor(T.win);
-  cv->drawText(&FONT_std_12, x, r.Y2 - 140, "Grey line (HF propagation): day / night now");
+  if (s_newsCount) drawNewsTicker(cv);                       // rolling headlines, just above the map
+  else cv->drawText(&FONT_std_12, x, r.Y2 - 140, "Grey line (HF propagation): day / night now");
 #else
   // world times
   cv->drawLine(x, y - 2, r.X2 - 10, y - 2);

@@ -831,6 +831,9 @@ public:
           time_t ns = time(nullptr);
           if (ns != m_lastSec) { m_lastSec = ns; repaint(Rect(imax(0, s_clockX - 4), SCREEN_H - BAR_H, SCREEN_W - 1, SCREEN_H - 1)); }
         }
+#ifdef TIDYOS_PRO
+        if (m_tick % 2 == 1 && s_newsCount && !showingHint()) { newsTickerStep(); repaint(newsTickerRect()); }   // rolling headlines
+#endif
         if (++m_tick % 10) break;                   // the rest once a second (timer: 100 ms)
         netTick();
         gHeapSnap = ramFree(); gMinHeapSnap = ramLowest();
@@ -980,6 +983,10 @@ private:
 
   void paint(Rect const & clip) {
     auto cv = canvas();
+#ifdef TIDYOS_PRO
+    { Rect k = newsTickerRect();                    // just the news line moving on: draw only that
+      if (!showingHint() && clip.X1 >= k.X1 && clip.X2 <= k.X2 && clip.Y1 >= k.Y1 && clip.Y2 <= k.Y2) { drawNewsTicker(cv); return; } }
+#endif
     cv->setBrushColor(T.desk);
     cv->fillRectangle(clip.X1, clip.Y1, clip.X2, imin(clip.Y2, SCREEN_H - BAR_H - 1));
     for (int i = 0; i < NICONS; ++i) {
@@ -1886,7 +1893,9 @@ void setup()
   if (updMode) {
     // update mode: screen + Wi-Fi only, so there's room for HTTPS
     Serial.println("[TidyOS] update mode");
-    esp_bt_controller_mem_release(ESP_BT_MODE_BTDM);
+#ifndef TIDYOS_HTML5                     // (the HTML5 edition already gave it back at the top of setup(): a second
+    esp_bt_controller_mem_release(ESP_BT_MODE_BTDM);   // release fails and aborts, which made every update reboot)
+#endif
     netBegin();
     startDisplay();
 #ifdef TIDYOS_HTML5

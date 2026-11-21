@@ -26,7 +26,14 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.0. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.1. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.1: updates work again, rolling news
+- **Fixed: Check for updates rebooted the board straight away.** Update mode gave Bluetooth's memory back a second
+  time; that fails on the S3 and aborts, so every update went round the boot menu and back. Boards on 3.4.0 or older
+  need this version installed once from the flasher; after that, Check for updates works (with or without a card).
+- **Rolling news headlines** on the desktop panel, in a line above the map: NPR (BBC News if NPR can't be reached),
+  moving along a letter at a time, refreshed every 30 minutes while the browser is open.
 
 ### 3.4.0: shrink music and photos
 - **Drop music on the desktop and it's shrunk on the way in**: MP3 / M4A / FLAC / WAV / OGG become **Opus 48 kbps**
