@@ -240,6 +240,14 @@ PRG: switch  hold: go  4s</div>
     <div class="fb-status" id="rsStatus" hidden><div class="fb-bar"><div id="rsFill"></div></div><div id="rsMsg"></div></div>
   </div>
 
+  <h2>7. Erase the board</h2>
+  <p>Wipes the board's whole flash: TidyOS Pro, The Shelf, the boot menu, Wi-Fi and settings, and every file kept on the board. Useful before a clean install, or if the board won't start properly. Afterwards it has nothing to run until you install again (step 2). The microSD card isn't touched. It takes about half a minute.</p>
+  <div class="card">
+    <button class="btn alt" id="fbErase" style="border-color:var(--bad);color:var(--bad)">Erase the whole board&hellip;</button>
+    <small>Back up first (step 1) if there's anything on it you want to keep.</small>
+    <div class="fb-status" id="erStatus" hidden><div class="fb-bar"><div id="erFill"></div></div><div id="erMsg"></div></div>
+  </div>
+
   <h2>Updates</h2>
   <p>TidyOS Pro: Settings &rarr; <b>Check for updates</b>. With a microSD card in, the update is saved on the card; <b>without one, it's saved in the board's own storage</b> (The Shelf's 7.4 MB area, which needs about 3 MB free). Then the boot menu installs it and starts the new TidyOS Pro. Boards installed before 3.1.2 need one install from this page first (tick TidyOS Pro and Boot menu) to get the new boot menu. The Shelf on a dual-boot board updates from its own settings page as usual.</p>
 
@@ -265,7 +273,7 @@ PRG: switch  hold: go  4s</div>
 // Whole-board flash backup and restore over USB, with esptool-js.
 const ESPTOOL = 'https://unpkg.com/esptool-js@0.5.7/bundle.js';
 const $ = id => document.getElementById(id);
-const busy = on => { $('fbBackup').disabled = $('fbRestore').disabled = $('fbRestoreGo').disabled = $('pkGo').disabled = on; };
+const busy = on => { $('fbBackup').disabled = $('fbRestore').disabled = $('fbRestoreGo').disabled = $('pkGo').disabled = $('fbErase').disabled = on; };
 let at = 'fb';      // which card shows the progress: fb = backup, rs = restore
 const show = (msg, frac) => {
   $(at + 'Status').hidden = false; $(at + 'Msg').textContent = msg;
@@ -274,7 +282,7 @@ const show = (msg, frac) => {
 const mb = n => n < 1048576 ? Math.max(1, Math.round(n / 1024)) + ' KB' : (n / 1048576).toFixed(1) + ' MB';
 
 if (!('serial' in navigator)) {
-  for (const id of ['fbBackup', 'fbRestore', 'pkGo']) $(id).disabled = true;
+  for (const id of ['fbBackup', 'fbRestore', 'pkGo', 'fbErase']) $(id).disabled = true;
   show('Open this page in Chrome or Edge on a computer to back up or restore over USB.');
 }
 
@@ -710,6 +718,22 @@ $('cnForm').onsubmit = async ev => {
   try { await w.write(new TextEncoder().encode(t + '\n')); cnAdd('> ' + t, 'me'); $('cnLine').value = ''; }
   catch (e) { cnAdd('Send failed: ' + e.message, 'warn'); }
   finally { w.releaseLock(); }
+};
+// ---------- Erase: the whole flash (esptool's erase_flash) ----------
+$('fbErase').onclick = async () => {
+  at = 'er'; let c, port;
+  try { port = await pickPort(); } catch (e) { show(friendly(e)); return; }
+  if (!confirm('Erase the WHOLE board?\n\nEverything on its flash goes: TidyOS Pro, The Shelf, the boot menu, Wi-Fi and settings, and files kept on the board. It will have nothing to run until you install again.\n\nThe microSD card is not touched.')) { show('Erase cancelled.'); return; }
+  busy(true);
+  try {
+    c = await connect(port);
+    const t0 = Date.now();
+    const tick = setInterval(() => { const s = Math.round((Date.now() - t0) / 1000); show(`Erasing ${mb(c.bytes)} of flash... ${s} s (usually 20-60 s)`, Math.min(0.95, s / 45)); }, 500);
+    try { await c.loader.eraseFlash(); } finally { clearInterval(tick); }
+    await done(c); c = null;
+    show(`Erased in ${Math.round((Date.now() - t0) / 1000)} s. The board is empty now: install from step 2.`, 1);
+  } catch (e) { show(friendly(e)); }
+  finally { if (c) await done(c); busy(false); }
 };
 function confirmRestore(name, n) {
   return window.confirm(`Restore ${name} (${mb(n)})?\n\nThis replaces everything on the board's flash: firmware (TidyOS Pro, The Shelf, boot menu), Wi-Fi, settings and on-board files. The microSD card isn't touched.`);

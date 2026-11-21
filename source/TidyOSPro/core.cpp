@@ -1770,6 +1770,8 @@ static void stackWatchTask(void *)
   }
 }
 
+SET_LOOP_TASK_STACK_SIZE(16 * 1024);   // the desktop and every app run in the loop task: 8 KB was the classic ESP32's size
+
 void setup()
 {
 #ifdef TIDYOS_HTML5
@@ -1806,7 +1808,12 @@ void setup()
 #endif
     splashLogo();
     barStart();
-    updateRun(splash);
+    // the update (HTTPS, certificate checks, writing to the card or the board's storage) needs much more
+    // stack than the loop task has, so it runs in a task of its own; it restarts the board when done
+    static TaskHandle_t upd = nullptr;
+    if (xTaskCreatePinnedToCore([](void *) { updateRun(splash); vTaskDelete(nullptr); }, "update", 24576, nullptr, 2, &upd, 1) != pdPASS)
+      updateRun(splash);                         // (no room for the task: try it here)
+    for (;;) vTaskDelay(pdMS_TO_TICKS(1000));
   }
   inputBegin();     // Bluetooth first: it needs a big block of RAM
   std::set_new_handler(lowMemoryWait);

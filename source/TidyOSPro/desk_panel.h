@@ -492,19 +492,35 @@ static int drawFieldPanel(Canvas * cv, Rect r, int x, int y)
   if (s_fXray[0]) { sw += "  X-ray "; sw += s_fXray; }
   if (sw == "Sun:") sw = "Sun: looking it up...";
   cv->drawText(&FONT_std_12, x, y, sw.c_str());
-  // HF bands (hfRatings: the same as the OLED shows)
+  // HF bands in one row across the graph (hfRatings: the same as the OLED shows):
+  // the band on top, its rating under it; Good ones filled in, Poor ones in red
+  const int GW = PANEL_W - 22;
   const char * hf[6];
   if (hfRatings(hf)) {
-    snprintf(b, sizeof(b), "HF  160m %s   80m %s   40m %s", hf[0], hf[1], hf[2]);
-    cv->drawText(&FONT_std_12, x, y + 13, b);
-    snprintf(b, sizeof(b), "       20m %s   15m %s   10m %s", hf[3], hf[4], hf[5]);
-    cv->drawText(&FONT_std_12, x, y + 26, b);
-    y += 13;
+    static const char * BAND[6] = { "160m", "80m", "40m", "20m", "15m", "10m" };
+    const fabgl::FontInfo * f = &FONT_std_12;
+    for (int i = 0; i < 6; ++i) {
+      int cx1 = x + i * GW / 6, cx2 = x + (i + 1) * GW / 6 - 2, cw = cx2 - cx1, ry = y + 13;
+      cv->setPenColor(T.text); cv->setBrushColor(T.win);
+      cv->drawText(f, cx1 + (cw - cv->textExtent(f, BAND[i])) / 2, ry, BAND[i]);
+      bool good = !strcmp(hf[i], "Good"), poor = !strcmp(hf[i], "Poor");
+      RGB888 fill = gColors >= 8 ? green : T.text;
+      if (good) { cv->setBrushColor(fill); cv->fillRectangle(cx1, ry + 13, cx2, ry + 25); cv->setPenColor(T.win); cv->setBrushColor(fill); }
+      else if (poor) cv->setPenColor(red);
+      cv->drawText(f, cx1 + (cw - cv->textExtent(f, hf[i])) / 2, ry + 13, hf[i]);
+      cv->setPenColor(T.text); cv->setBrushColor(T.win);
+    }
+    y += 26;
   }
-  y += 27;
-  drawMini(cv, x, y, PANEL_W - 22, 16, s_fKp, 0, 90, kp10 >= 50 ? red : T.accent, true, 50, red);
+  y += 14;
+  drawMini(cv, x, y, GW, 16, s_fKp, 0, 90, kp10 >= 50 ? red : T.accent, true, 50, red);
   cv->setPenColor(T.text); cv->setBrushColor(T.win);
-  y += 20;
+  {                                                         // what the graph is
+    std::string lab = "Kp, last 4 days. Over the red line (5): storm, HF fades";
+    while (lab.size() > 8 && cv->textExtent(&FONT_std_12, lab.c_str()) > GW) lab.pop_back();
+    cv->drawText(&FONT_std_12, x, y + 18, lab.c_str());
+  }
+  y += 33;
   // row 4: NWS alerts
   if (s_fAlertN == -1) cv->drawText(&FONT_std_12, x, y, "Alerts: looking them up...");
   else if (s_fAlertN == -2) cv->drawText(&FONT_std_12, x, y, "Alerts: NWS not reachable (US only)");

@@ -26,7 +26,17 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.2.1. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.2.3. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.2.3
+- **Updating crashed** (it restarted, crashed and restarted): the update ran in Arduino's loop task, whose 8 KB stack
+  is too small for HTTPS with certificate checks on the S3. It now runs in its own task with a 24 KB stack, and the
+  loop task (where the desktop and every app run) has 16 KB instead of 8 KB.
+- **Wi-Fi Scan: "Open in Tidy"** saves the scan as `rf/wifi-*.csv` (network, signal, channel, frequency, security,
+  BSSID, time, and position if the GPS has a fix) and opens it in Tidy.
+- **Desktop HF bands** in one row across the Kp graph (Good filled in, Poor in red), with a label under the graph
+  saying what it shows.
+- **Web flasher: Erase the whole board** (step 7), the same as esptool's erase_flash.
 
 ### 3.2.1
 - Bottom bar: the Optimize button now sits in front of the RAM figures.

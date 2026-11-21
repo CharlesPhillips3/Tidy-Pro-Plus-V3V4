@@ -894,11 +894,12 @@ static void wifiScanTask(void *)
 class WifiScanApp : public AppFrame {
 public:
   static AppFrame * inst;
-  uiListBox * list; uiLabel * sum; uiButton * btn;
+  uiListBox * list; uiLabel * sum; uiButton * btn, * tidyBtn;
   int shown = -1;
   WifiScanApp() : AppFrame("Wi-Fi Scan", Point(60, 30), Size(540, 400), &inst) {
-    btn = button("Scan", cx, cy, 80); btn->onClick = [this]() { scan(); };
-    sum = label("", cx + 90, cy + 3, 436, 18);
+    btn = button("Scan", cx, cy, 70); btn->onClick = [this]() { scan(); };
+    tidyBtn = button("Open in Tidy", cx + 76, cy, 104); tidyBtn->onClick = [this]() { toTidy(); };
+    sum = label("", cx + 188, cy + 3, 338, 18);
     list = S(new uiListBox(this, Point(cx, cy + 28), Size(526, 330)));
     list->items().takeStrings();
     list->listBoxStyle().textFont = &FONT_8x14;
@@ -928,8 +929,38 @@ public:
     list->repaint();
     char b[160];
     int best = 1; for (int c : { 1, 6, 11 }) if (perCh[c] < perCh[best]) best = c;
-    snprintf(b, sizeof(b), "%d networks. Busiest: ch1 %d, ch6 %d, ch11 %d. Quietest of 1/6/11: %d", (int)s_wifi.size(), perCh[1], perCh[6], perCh[11], best);
+    snprintf(b, sizeof(b), "%d networks. ch1 %d, ch6 %d, ch11 %d. Quietest: %d", (int)s_wifi.size(), perCh[1], perCh[6], perCh[11], best);
     sum->setText(b); sum->repaint();
+  }
+  // saves this scan as a CSV (SD:/rf/wifi-*.csv, or the board's own storage) and opens it in Tidy
+  void toTidy() {
+    if (s_wifiState != 2 || s_wifi.empty()) {
+      gApp->messageBox("Wi-Fi Scan", s_wifiState == 1 ? "Still scanning - try again in a moment." : "No networks to export yet. Click Scan first.", "OK", nullptr, nullptr, uiMessageBoxIcon::Info);
+      return;
+    }
+    char tb[32]; time_t t = time(nullptr); struct tm tmv; localtime_r(&t, &tmv); strftime(tb, sizeof(tb), "%Y-%m-%d %H:%M:%S", &tmv);
+    std::string loc;
+    {
+      std::lock_guard<std::mutex> lk(rf::gMx);
+      if (rf::gGnss.fix) { char b[48]; snprintf(b, sizeof(b), "%.6f,%.6f", rf::gGnss.lat, rf::gGnss.lon); loc = b; } else loc = ",";
+    }
+    std::string s = "network,signal_dbm,channel,freq_mhz,security,bssid,scanned,lat,lon\n";
+    for (auto & r : s_wifi) {
+      std::string name = r.ssid.empty() ? "(hidden)" : r.ssid, q;
+      for (char c : name) { if (c == '"') q += '"'; q += c; }       // CSV: double any quotes
+      const char * a = r.auth == WIFI_AUTH_OPEN ? "open" : r.auth == WIFI_AUTH_WEP ? "WEP" : r.auth == WIFI_AUTH_WPA3_PSK ? "WPA3" : r.auth == WIFI_AUTH_WPA2_WPA3_PSK ? "WPA2/3" : "WPA2";
+      int mhz = r.ch == 14 ? 2484 : 2407 + 5 * r.ch;
+      char b[200];
+      snprintf(b, sizeof(b), "\"%s\",%d,%d,%d,%s,%02X:%02X:%02X:%02X:%02X:%02X,%s,%s\n", q.c_str(), r.rssi, r.ch, mhz, a,
+               r.bssid[0], r.bssid[1], r.bssid[2], r.bssid[3], r.bssid[4], r.bssid[5], tb, loc.c_str());
+      s += b;
+    }
+    std::string path = rfDir() + "/wifi-" + rfStamp() + ".csv";
+    if (!writeFileStr(path.c_str(), s)) {
+      gApp->messageBox("Wi-Fi Scan", "Couldn't save the file (is the storage full?).", "OK", nullptr, nullptr, uiMessageBoxIcon::Warning);
+      return;
+    }
+    openTidy(path.c_str());
   }
 };
 AppFrame * WifiScanApp::inst = nullptr;
