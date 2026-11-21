@@ -1699,9 +1699,9 @@ static void bootChooser()
       int bx = BW_X + BW_W / 2 - 80, by = BW_Y + BW_H - 70;
       if (x >= bx && x <= bx + 160 && y >= by && y <= by + 32) boot = true;
       int ux = BW_X + BW_W - 102;
-      if (x >= ux && x <= ux + 96 && y >= by + 4 && y <= by + 28) {     // Update: restart into update mode (black & white)
+      if (x >= ux && x <= ux + 96 && y >= by + 4 && y <= by + 28) {     // Update: restart into update mode
         if (updateLoaderPresent()) {
-          bootStatus(cv, "Restarting to update (in black & white, for memory)...");
+          bootStatus(cv, "Restarting to update...");
           cv.waitCompletion();
           delay(400);
           updateRequest();

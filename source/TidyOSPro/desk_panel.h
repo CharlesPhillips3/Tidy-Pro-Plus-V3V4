@@ -447,6 +447,7 @@ void deskSnapshot(DeskSnap & d)
   d.sfi = s_fSfi; strlcpy(d.xray, s_fXray, sizeof(d.xray));
   d.hfOk = hfRatings(d.hf);
   d.alertN = s_fAlertN;
+  d.newsN = s_newsCount; for (int i = 0; i < s_newsCount && i < 6; ++i) strlcpy(d.news[i], s_news[i], sizeof(d.news[0]));
   for (int i = 0; i < 3; ++i) strlcpy(d.alert[i], s_fAlert[i], sizeof(d.alert[i]));
   d.unread = msgUnreadTotal() + comsUnread();
 }

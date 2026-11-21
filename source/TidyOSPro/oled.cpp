@@ -26,8 +26,8 @@ static U8G2_SSD1306_128X64_NONAME_F_HW_I2C s_oled(U8G2_R0, OLED_RST, OLED_SCL, O
 static const uint32_t PAGE_MS = 30000, DIM_MS = 30UL * 60 * 1000, TAP_GAP_MS = 400, LONG_MS = 1000, RESET_MS = 3000;
 static const uint8_t BRIGHT = 160, DIM = 8;
 
-enum Page { P_ADDRESS, P_CLOCK, P_WEATHER, P_WIND, P_SUN, P_STORMS, P_RADIO, P_SYSTEM, P_STOPWATCH, P_COUNT };
-static const char * TITLE[P_COUNT] = { "ADDRESS", "CLOCK", "WEATHER", "WIND + HUMIDITY", "SUN + HF BANDS", "STORMS + ALERTS", "900 MHz", "SYSTEM", "STOPWATCH" };
+enum Page { P_ADDRESS, P_CLOCK, P_WEATHER, P_WIND, P_SUN, P_STORMS, P_NEWS, P_RADIO, P_SYSTEM, P_STOPWATCH, P_COUNT };
+static const char * TITLE[P_COUNT] = { "ADDRESS", "CLOCK", "WEATHER", "WIND + HUMIDITY", "SUN + HF BANDS", "STORMS + ALERTS", "NEWS", "900 MHz", "SYSTEM", "STOPWATCH" };
 
 // stopwatch
 static bool s_swRun = false;
@@ -254,6 +254,32 @@ static void pageStorms()
   }
 }
 
+// headlines: one at a time, word-wrapped, a new one every 5 s (all six in the page's 30 s)
+static void pageNews(uint32_t pageAt)
+{
+  char b[40];
+  s_oled.setFont(u8g2_font_5x8_tr);
+  if (s_d.newsN <= 0) {
+    centre("Headlines show once", 30);
+    centre("the desktop is open", 40);
+    centre("in a browser", 50);
+    return;
+  }
+  int i = (int)((millis() - pageAt) / 5000) % s_d.newsN;
+  snprintf(b, sizeof(b), "%d/%d", i + 1, s_d.newsN);
+  s_oled.drawStr(128 - s_oled.getStrWidth(b), 63, b);
+  const char * a = s_d.news[i];
+  int y = 19;
+  while (*a && y <= 63) {
+    int n = strlen(a), lim = y >= 55 ? 20 : 25;               // (the last line leaves room for "3/6")
+    if (n > lim) { n = lim; while (n > 8 && a[n] != ' ') --n; if (a[n] != ' ') n = lim; }
+    bool more = y >= 55 && (int)strlen(a) > n;
+    snprintf(b, sizeof(b), "%.*s%s", n, a, more ? ".." : "");
+    s_oled.drawStr(0, y, b); y += 9;
+    a += n; while (*a == ' ') ++a;
+  }
+}
+
 static void pageRadio()
 {
   char b[48];
@@ -346,6 +372,7 @@ static void draw(int page, bool held, uint32_t pageAt, bool resetHint)
     case P_WIND: pageWind(); break;
     case P_SUN: pageSun(); break;
     case P_STORMS: pageStorms(); break;
+    case P_NEWS: pageNews(pageAt); break;
     case P_RADIO: pageRadio(); break;
     case P_SYSTEM: pageSystem(); break;
     case P_STOPWATCH: pageStopwatch(); break;

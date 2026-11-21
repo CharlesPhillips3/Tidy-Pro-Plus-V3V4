@@ -93,7 +93,7 @@ function connect(){
  kicked=false;if(!lostAt)show('Connecting to TidyOS Pro...');
  ws=new WebSocket('ws://'+location.host+'/ws');ws.binaryType='arraybuffer';
  var w0=ws;setTimeout(function(){if(w0.readyState==0)w0.close();},2000);   // a board that's restarting can leave this hanging: give up and try again (every second or so)
- ws.onopen=function(){lostAt=0;show('');st.textContent='Connected';c.focus();var t=Math.floor(Date.now()/1000);send([6,t&255,t>>8&255,t>>16&255,t>>>24]);wxAt=0;setTimeout(weather,1500);ctAt=0;setTimeout(cityTemps,2500);nwAt=0;setTimeout(news,3000);};
+ ws.onopen=function(){lostAt=0;show('');st.textContent='Connected';c.focus();var t=Math.floor(Date.now()/1000);send([6,t&255,t>>8&255,t>>16&255,t>>>24]);wxAt=0;fcAt=0;ctAt=0;nwAt=0;setTimeout(function(){weather();fieldWx();cityTemps();news();},300);};   // all at once, as soon as the screen is up
  ws.onmessage=function(e){var d=new Uint8Array(e.data);rx+=d.length;
   if(d[0]==1){bpp=d[1];for(var i=0;i<d[2];i++)pal[i]=0xff000000|d[5+i*3]<<16|d[4+i*3]<<8|d[3+i*3];}
   else if(d[0]==2){var y=d[1]|d[2]<<8,n=d[3],o=4,rb=bpp==1?80:bpp==2?160:240;
@@ -179,12 +179,14 @@ function openBanner(u,n){var w=null;try{w=window.open(u,'_blank');}catch(e){}if(
  e.appendChild(b);e.appendChild(x);e.style.display='flex';}
 var wxAt=0;
 function wxSend(s){send([12].concat(Array.from(new TextEncoder().encode(s.slice(0,62)))));}
-function geo(){var tries=[['https://ipwho.is/',function(j){return j.success!==false&&j.latitude!=null?{lat:j.latitude,lon:j.longitude,city:j.city}:null;}],
+var geoP=null,geoAt=0;function geo(){if(geoP&&Date.now()-geoAt<6*3600000)return geoP;geoAt=Date.now();   // one lookup for weather and the field panel (kept 6 h)
+ geoP=geo1().catch(function(e){geoP=null;throw e;});return geoP;}
+function geo1(){var tries=[['https://ipwho.is/',function(j){return j.success!==false&&j.latitude!=null?{lat:j.latitude,lon:j.longitude,city:j.city}:null;}],
   ['https://ipapi.co/json/',function(j){return j.latitude!=null?{lat:j.latitude,lon:j.longitude,city:j.city}:null;}],
   ['http://ip-api.com/json/?fields=status,city,lat,lon',function(j){return j.status=='success'?{lat:j.lat,lon:j.lon,city:j.city}:null;}]],i=0;
  return new Promise(function(ok,bad){(function next(){if(i>=tries.length){bad('location lookup blocked');return;}var t=tries[i++];
-  fetch(t[0]).then(function(r){return r.json();}).then(function(j){var g=t[1](j);if(g)ok(g);else next();}).catch(next);})();});}
-function weather(){if(!ws||ws.readyState!=1||Date.now()-wxAt<25*60000)return;wxAt=Date.now();
+  fetch(t[0],{signal:AbortSignal.timeout?AbortSignal.timeout(5000):undefined}).then(function(r){return r.json();}).then(function(j){var g=t[1](j);if(g)ok(g);else next();}).catch(next);})();});}
+function weather(){if(!ws||ws.readyState!=1||Date.now()-wxAt<10*60000)return;wxAt=Date.now();
  geo().then(function(g){
   return fetch('https://api.open-meteo.com/v1/forecast?latitude='+g.lat+'&longitude='+g.lon+'&current=temperature_2m,weather_code&daily=temperature_2m_max,temperature_2m_min&hourly=temperature_2m&past_days=4&temperature_unit=fahrenheit&timezone=auto&forecast_days=1')
    .then(function(r){return r.json();}).then(function(w){
@@ -193,7 +195,7 @@ function weather(){if(!ws||ws.readyState!=1||Date.now()-wxAt<25*60000)return;wxA
      send([17].concat(Array.from(new TextEncoder().encode(s.join(',')))));}catch(e){}
     wxSend(Math.round(w.current.temperature_2m)+'|'+w.current.weather_code+'|'+Math.round(w.daily.temperature_2m_max[0])+'|'+Math.round(w.daily.temperature_2m_min[0])+'|'+(+g.lat).toFixed(2)+'|'+(+g.lon).toFixed(2)+'|'+(g.city||'').replace(/[^\x20-\x7e]/g,'').slice(0,24));})
    .catch(function(){wxSend('E|weather service unreachable|'+(+g.lat).toFixed(2)+'|'+(+g.lon).toFixed(2));throw 1;});})
- .catch(function(e){if(e!==1)wxSend('E|'+(typeof e=='string'?e:'no internet from this browser'));wxAt=Date.now()-22*60000;});}
+ .catch(function(e){if(e!==1)wxSend('E|'+(typeof e=='string'?e:'no internet from this browser'));wxAt=Date.now()-9*60000;});}
 setInterval(weather,30000);
 
 // ---- TidyOS Pro: field conditions for the desktop panel (wind, humidity, storms, tropo ducting,
@@ -203,7 +205,7 @@ function fcSend(k,v){send([19].concat(Array.from(new TextEncoder().encode((k+'|'
 function every3(t,v,now){var pts=[];for(var i=0;i<t.length;i++){if(new Date(t[i]).getTime()>now)break;pts.push(v[i]);}pts=pts.slice(-97);var s=[];for(var i=pts.length-1;i>=0;i-=3)s.unshift(pts[i]);return s;}
 function max3(t,v,now){var pts=[];for(var i=0;i<t.length;i++){if(new Date(t[i]).getTime()>now)break;pts.push(v[i]);}pts=pts.slice(-97);var s=[];for(var i=pts.length-1;i>=0;i-=3){var m=null;for(var k=i;k>i-3&&k>=0;k--)if(pts[k]!=null&&(m==null||pts[k]>m))m=pts[k];s.unshift(m);}return s;}
 function refr(tC,rh,pHpa){if(tC==null||rh==null||pHpa==null)return null;var T=tC+273.15,es=6.112*Math.exp(17.67*tC/(tC+243.5)),e=rh/100*es;return 77.6/T*(pHpa+4810*e/T);}
-function fieldWx(){if(!ws||ws.readyState!=1||Date.now()-fcAt<25*60000)return;fcAt=Date.now();
+function fieldWx(){if(!ws||ws.readyState!=1||Date.now()-fcAt<10*60000)return;fcAt=Date.now();
  geo().then(function(g){fcGeo=g;var now=Date.now();
   fetch('https://api.open-meteo.com/v1/forecast?latitude='+g.lat+'&longitude='+g.lon+'&hourly=wind_speed_10m,wind_gusts_10m,wind_direction_10m,relative_humidity_2m,dew_point_2m,cape,weather_code,temperature_2m,surface_pressure,temperature_925hPa,relative_humidity_925hPa,geopotential_height_925hPa&current=wind_speed_10m,wind_gusts_10m,wind_direction_10m,relative_humidity_2m,dew_point_2m,pressure_msl&wind_speed_unit=mph&past_days=4&forecast_days=1&timezone=auto')
   .then(function(r){return r.json();}).then(function(w){var h=w.hourly,T=h.time,r0=function(a){return a.map(function(x){return x==null?'':Math.round(x);}).join(',');};
@@ -216,12 +218,12 @@ function fieldWx(){if(!ws||ws.readyState!=1||Date.now()-fcAt<25*60000)return;fcA
      d.push(ns==null||n9==null||!(z>50)?null:(n9-ns)/z*1000);}
    fcSend('duct',r0(every3(T,d,now)));
    var c=w.current;fcSend('now',[Math.round(c.wind_speed_10m),Math.round(c.wind_gusts_10m),Math.round(c.wind_direction_10m),Math.round(c.relative_humidity_2m),Math.round(c.dew_point_2m*9/5+32),(c.pressure_msl*0.02953).toFixed(2)].join(','));})
-  .catch(function(){fcAt=Date.now()-22*60000;});
+  .catch(function(){fcAt=Date.now()-9*60000;});
   // US weather alerts (thunderstorms, wind, winter storms) from the National Weather Service
   fetch('https://api.weather.gov/alerts/active?point='+(+g.lat).toFixed(4)+','+(+g.lon).toFixed(4))
    .then(function(r){return r.json();}).then(function(j){var a=(j.features||[]).map(function(f){return plain(f.properties.event||'')+(f.properties.expires?' until '+new Date(f.properties.expires).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):'');});
     fcSend('alert',a.length?a.slice(0,3).join('\n'):'-');}).catch(function(){fcSend('alert','?');});
- }).catch(function(){fcAt=Date.now()-22*60000;});
+ }).catch(function(){fcAt=Date.now()-9*60000;});
  // space weather: NOAA SWPC (solar flux, Kp, X-ray)
  fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json').then(function(r){return r.json();}).then(function(a){
    var rows=a.filter(function(x){return Array.isArray(x)?!isNaN(parseFloat(x[1])):x&&x.Kp!=null;}).map(function(x){return Array.isArray(x)?parseFloat(x[1]):+x.Kp;});
@@ -230,13 +232,13 @@ function fieldWx(){if(!ws||ws.readyState!=1||Date.now()-fcAt<25*60000)return;fcA
  fetch('https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json').then(function(r){return r.json();}).then(function(a){var l=a.filter(function(e){return e.energy=='0.1-0.8nm';});if(!l.length)return;var f=l[l.length-1].flux,c='A',m=1e-8;
    if(f>=1e-4){c='X';m=1e-4;}else if(f>=1e-5){c='M';m=1e-5;}else if(f>=1e-6){c='C';m=1e-6;}else if(f>=1e-7){c='B';m=1e-7;}fcSend('xray',c+(f/m).toFixed(1));}).catch(function(){});}
 setInterval(fieldWx,30000);
-var ctAt=0;function cityTemps(){if(!ws||ws.readyState!=1||Date.now()-ctAt<30*60000)return;ctAt=Date.now();   // Moscow, Los Angeles, Tokyo
+var ctAt=0;function cityTemps(){if(!ws||ws.readyState!=1||Date.now()-ctAt<15*60000)return;ctAt=Date.now();   // Moscow, Los Angeles, Tokyo
  fetch('https://api.open-meteo.com/v1/forecast?latitude=55.76,34.05,35.68&longitude=37.62,-118.24,139.69&current=temperature_2m&temperature_unit=fahrenheit')
   .then(function(r){return r.json();}).then(function(a){if(!Array.isArray(a))a=[a];
    send([18].concat(Array.from(new TextEncoder().encode(a.map(function(c){return Math.round(c.current.temperature_2m);}).join(',')))));})
   .catch(function(){var L=[[55.76,37.62],[34.05,-118.24],[35.68,139.69]];        // one at a time instead
    Promise.all(L.map(function(c){return fetch('https://api.open-meteo.com/v1/forecast?latitude='+c[0]+'&longitude='+c[1]+'&current=temperature_2m&temperature_unit=fahrenheit').then(function(r){return r.json();}).then(function(j){return Math.round(j.current.temperature_2m);});}))
-    .then(function(t){send([18].concat(Array.from(new TextEncoder().encode(t.join(',')))));}).catch(function(){ctAt=Date.now()-28*60000;});});}
+    .then(function(t){send([18].concat(Array.from(new TextEncoder().encode(t.join(',')))));}).catch(function(){ctAt=Date.now()-14*60000;});});}
 setInterval(cityTemps,30000);
 function rep13(s){send([13].concat(Array.from(new TextEncoder().encode(s.slice(0,1000)))));}
 function store(v){var a=v.split('\t'),op=a[0],R=(a[1]||'').replace(/\/+$/,''),B=a[2];
@@ -248,13 +250,13 @@ function store(v){var a=v.split('\t'),op=a[0],R=(a[1]||'').replace(/\/+$/,''),B=
  else if(op=='D')fetch(F(a[3])).then(function(r){if(!r.ok)throw 'not in the store';return r.blob();}).then(function(b){return fetch(mUrl(a[4]),{method:'PUT',body:b});}).then(function(r){if(!r.ok)throw 'could not save it on the board';rep13('D\tok\t'+a[3]);}).catch(err);
  else if(op=='X')fetch(F(a[3]),{method:'DELETE'}).then(chk).then(function(){rep13('X\tok\t'+a[3]);}).catch(err);}
 var nwAt=0;function plain(t){return t.replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/[–—]/g,'-').replace(/…/g,'...').replace(/&amp;/g,'&').replace(/[^\x20-\x7e]/g,'').trim();}
-function news(){if(!ws||ws.readyState!=1||Date.now()-nwAt<30*60000)return;nwAt=Date.now();
+function news(){if(!ws||ws.readyState!=1||Date.now()-nwAt<15*60000)return;nwAt=Date.now();
  var feeds=['https://feeds.npr.org/1001/rss.xml','https://feeds.bbci.co.uk/news/rss.xml'],i=0;
- (function next(){if(i>=feeds.length){nwAt=Date.now()-25*60000;return;}var f=feeds[i++];
+ (function next(){if(i>=feeds.length){nwAt=Date.now()-14*60000;return;}var f=feeds[i++];
   fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(f)).then(function(r){return r.json();}).then(function(j){
    if(j.status!='ok'||!j.items||!j.items.length)throw 0;var t=j.items.slice(0,6).map(function(x){return plain(x.title||'').slice(0,120);});
    send([14].concat(Array.from(new TextEncoder().encode(t.join('\n')))));}).catch(next);})();}
-setInterval(news,60000);
+setInterval(news,30000);
 var dropQ=[];
 function note(t,ms){var e=document.getElementById('dn');if(!e){e=document.createElement('div');e.id='dn';e.style.cssText='position:fixed;bottom:18px;right:18px;z-index:22;background:#222;color:#fff;font:15px sans-serif;padding:10px 14px;border-radius:8px;box-shadow:0 4px 16px #0008';document.body.appendChild(e);}
  e.textContent=t;e.style.display='block';clearTimeout(e.t);if(ms)e.t=setTimeout(function(){e.style.display='none';},ms);}

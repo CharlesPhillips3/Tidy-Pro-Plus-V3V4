@@ -13,5 +13,6 @@ struct DeskSnap {
   bool hfOk; const char * hf[6];                          // 160 80 40 20 15 10 m: "Good" "Fair" "Poor" "Local"
   int alertN; char alert[3][64];                          // -1 looking, -2 unreachable
   int unread;                                             // messages not read yet
+  int newsN; char news[6][120];                           // headlines (NPR, or BBC)
 };
 void deskSnapshot(DeskSnap & d);                          // core.cpp (desk_panel.h)

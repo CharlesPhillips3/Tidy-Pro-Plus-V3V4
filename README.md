@@ -26,7 +26,17 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.2. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.3. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.3: updates in colour
+- Check for updates no longer switches the screen to black & white: the V4's screen lives in PSRAM, so colour costs
+  the download nothing. (A board without PSRAM still drops to black & white for the update and switches back after.)
+- **NEWS page on the OLED**: the desktop's headlines, one at a time (a new one every 5 s), between Storms and 900 MHz.
+- **The desktop fills in faster**: weather, wind/humidity/storms, space weather, city temperatures and headlines are
+  all looked up the moment the browser connects (wind and the rest used to wait up to 30 s), the location is looked
+  up once instead of twice, and a slow location service is given up on after 5 s. They then refresh every
+  10 minutes (weather, field data) and 15 minutes (headlines, cities) instead of every 25-30, and a failed lookup
+  tries again after a minute.
 
 ### 3.4.2: Music and Pictures folders
 - The board's own storage gets **Music** and **Pictures** folders, and the Music app plays from Music when there's no

@@ -136,16 +136,20 @@ bool updateLoaderPresent()
   return esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_FACTORY, nullptr) != nullptr;
 }
 
-// Updating runs in black & white (more free RAM for the HTTPS download); the colour setting
+// Without PSRAM, updating runs in black & white (more free RAM for the HTTPS download); the colour setting
 // is kept here and put back at the next normal start (updateRestoreColors).
 void updateRequest()
 {
   Preferences p;
   p.begin("tidyupd", false);
   p.putBool("go", true);
-  if (gSet.colors != 2 && !p.isKey("col")) p.putInt("col", gSet.colors);
+  // With PSRAM (every Heltec V4) the screen lives there, so colour costs the HTTPS download nothing:
+  // the update runs in the colours you use. Only a board without PSRAM drops to black & white for it.
+  if (!psramFound()) {
+    if (gSet.colors != 2 && !p.isKey("col")) p.putInt("col", gSet.colors);
+    if (gSet.colors != 2) { gSet.colors = 2; settingsSave(); }
+  }
   p.end();
-  if (gSet.colors != 2) { gSet.colors = 2; settingsSave(); }
   delay(200);
   ESP.restart();
 }
