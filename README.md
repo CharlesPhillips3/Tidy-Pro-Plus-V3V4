@@ -26,7 +26,22 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.3.6. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.0. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.0: shrink music and photos
+- **Drop music on the desktop and it's shrunk on the way in**: MP3 / M4A / FLAC / WAV / OGG become **Opus 48 kbps**
+  (`.opus`), about a third of the size of a 128 kbps MP3 and sounding about the same. Title, artist, album, track and the
+  **cover picture** are kept. The browser does it (Chrome's WebCodecs on https pages; on the board's own http page,
+  libopus from [opus-recorder](https://github.com/chris-rudmin/opus-recorder) via the jsDelivr CDN).
+- **Photos too**: JPEG / PNG / iPhone **HEIC** become a 1280 px JPEG that TidyOS Pro's Pictures app can open on the
+  board (HEIC is read with [heic-to](https://github.com/hoppergee/heic-to), loaded from the CDN only when needed).
+  A 12-megapixel photo goes from ~3.5 MB to ~200 KB.
+- Hold **Alt** while dropping to send files as they are.
+- **Dropping works without an SD card** now: files land in the board's storage (`TidyPro/Incoming`).
+- Music and Files play `.opus`.
+- Web flasher: **Make room: shrink your music and photos**, with before/after, per-file savings, and a zip of the
+  results. It can also make AVIF photos for The Shelf ([jsquash/avif](https://github.com/jamsinclair/jSquash)).
+  The shrinkers are in `shrink/` (`shrink.js`, `photo.js`, `zip.js`).
 
 ### 3.3.6
 - The browser page reconnects **every second** when the board restarts (boot menu, update, Restart), and says how long

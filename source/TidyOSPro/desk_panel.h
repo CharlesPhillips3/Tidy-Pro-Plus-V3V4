@@ -111,18 +111,21 @@ void deskFieldFromPage(const char * t)
   s_wxVer++;
 }
 
-// files dropped on the page: the page saves them in SD:/Incoming, then the desktop asks where each one goes
+// files dropped on the page: the page saves them in Incoming (on the SD card, or the board's own storage),
+// then the desktop asks where each one goes
 static portMUX_TYPE s_dropMux = portMUX_INITIALIZER_UNLOCKED;
 static char s_dropQ[8][100];
 static volatile int s_dropW = 0, s_dropR = 0;
 bool gitStoreDropAt(int x, int y);          // gitstore_app.h
+static std::string dropDir() { return gSDMounted ? std::string(SD_MOUNT "/Incoming") : std::string(FLASH_HOME "/Incoming"); }
 void deskDropStart(int x, int y)            // the page has files to send (screen server task); x, y = where they were dropped
 {
   if (gitStoreDropAt(x, y)) return;         // onto Git-Store's box: straight to the cloud
-  if (!gSDMounted) { screenMedia("u nosd"); return; }
-  mkdir(SD_MOUNT "/Incoming", 0777);
+  if (!gSDMounted && !gFlashMounted) { screenMedia("u nosd"); return; }
+  std::string in = dropDir();
+  mkdir(in.c_str(), 0777);
   fileServerMedia(true);
-  screenMedia("u go");
+  screenMedia(("u go\t" + in + "/").c_str());               // the page sends them there
 }
 void deskDropped(const char * name)         // one has arrived in SD:/Incoming
 {
@@ -140,8 +143,8 @@ static void deskDropTick()                  // on the desktop's timer: ask where
   s_dropR++;
   portEXIT_CRITICAL(&s_dropMux);
   asking = true;
-  std::string from = std::string(SD_MOUNT "/Incoming/") + name;
-  std::string to = askFile((std::string("Where should ") + name + " go?").c_str(), "Put it here", name, SD_MOUNT);
+  std::string from = dropDir() + "/" + name;
+  std::string to = askFile((std::string("Where should ") + name + " go?").c_str(), "Put it here", name, gSDMounted ? SD_MOUNT : FLASH_HOME);
   if (!to.empty() && to != from) {
     if (fileSize(to.c_str()) >= 0 &&
         gApp->messageBox("Dropped file", "A file with that name is already there. Replace it?", "Replace", "Keep both", nullptr, uiMessageBoxIcon::Question) == uiMessageBoxResult::Button1)
@@ -155,7 +158,7 @@ static void deskDropTick()                  // on the desktop's timer: ask where
     if (rename(from.c_str(), to.c_str()) != 0)
       gApp->messageBox("Dropped file", "Couldn't move it - it's still in the Incoming folder.", "OK", nullptr, nullptr, uiMessageBoxIcon::Warning);
   } else if (to.empty()) {
-    gApp->messageBox("Dropped file", (std::string(name) + " stays in the Incoming folder on the SD card.").c_str(), "OK", nullptr, nullptr, uiMessageBoxIcon::Info);
+    gApp->messageBox("Dropped file", (std::string(name) + " stays in the Incoming folder.").c_str(), "OK", nullptr, nullptr, uiMessageBoxIcon::Info);
   }
   asking = false;
 }
@@ -577,7 +580,7 @@ static void drawDeskPanel(Canvas * cv)
     for (int k = bx1; k < bx2; k += 6) { cv->drawLine(k, by1, imin(k + 3, bx2), by1); cv->drawLine(k, by2, imin(k + 3, bx2), by2); }
     for (int k = by1; k < by2; k += 6) { cv->drawLine(bx1, k, bx1, imin(k + 3, by2)); cv->drawLine(bx2, k, bx2, imin(k + 3, by2)); }
     cv->drawText(&FONT_std_12, bx1 + 6, by1 + 1, "Drop files here");
-    cv->drawText(&FONT_std_12, bx1 + 6, by1 + 14, gSDMounted ? "for (SD) card" : "(needs SD card)");
+    cv->drawText(&FONT_std_12, bx1 + 6, by1 + 14, gSDMounted ? "to the SD card" : "to the board");
   }
 #endif
   y += 24;

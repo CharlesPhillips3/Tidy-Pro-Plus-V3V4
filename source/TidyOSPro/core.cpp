@@ -1056,7 +1056,7 @@ private:
         int wT = cv->textExtent(fT, "TidyOS"), wP = cv->textExtent(fP, "PRO");
         // a snug box: 3 px each side; PRO right after "TidyOS", its blue badge just around the letters
         int x0 = x, y0 = by + 2, y1 = SCREEN_H - 3;
-        int tx = x0 + 3, px1 = tx + wT + 1, px2 = px1 + wP + 1, x1 = px2 + 2;
+        int tx = x0 + 3, px1 = tx + wT, px2 = px1 + wP, x1 = px2 + 2;   // PRO touches "TidyOS"
         cv->setPenColor(T.text);
         cv->drawLine(x0 + 2, y0, x1 - 2, y0); cv->drawLine(x0 + 2, y1, x1 - 2, y1);
         cv->drawLine(x0, y0 + 2, x0, y1 - 2); cv->drawLine(x1, y0 + 2, x1, y1 - 2);
@@ -1065,10 +1065,10 @@ private:
         int py1 = y0 + 2, py2 = y1 - 2;
         cv->setBrushColor(T.accent);
         cv->fillRectangle(px1, py1, px2, py2);
-        cv->setPenColor(T.face);                          // round the badge's corners
-        cv->setPixel(px1, py1); cv->setPixel(px2, py1); cv->setPixel(px1, py2); cv->setPixel(px2, py2);
+        cv->setPenColor(T.face);                          // the badge: straight left edge at the P, rounded on the right
+        cv->setPixel(px2, py1); cv->setPixel(px2, py2);
         cv->setPenColor(T.accentText);
-        cv->drawText(fP, px1 + 1, py1 + (py2 - py1 + 1 - (int)fP->height) / 2, "PRO");
+        cv->drawText(fP, px1, py1 + (py2 - py1 + 1 - (int)fP->height) / 2, "PRO");
         cv->setPenColor(T.text); cv->setBrushColor(T.face);
         x = x1 + 8;
       }

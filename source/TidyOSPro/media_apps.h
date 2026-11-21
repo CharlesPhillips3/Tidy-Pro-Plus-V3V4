@@ -26,7 +26,7 @@ static bool isPictureFile(const char * n)
 static bool isMusicFile(const char * n)
 {
   const char * e = fileExt(n);
-  return !strcmp(e, "mp3") || !strcmp(e, "m4a") || !strcmp(e, "wav") || !strcmp(e, "ogg") || !strcmp(e, "mid") || !strcmp(e, "midi");
+  return !strcmp(e, "mp3") || !strcmp(e, "m4a") || !strcmp(e, "wav") || !strcmp(e, "ogg") || !strcmp(e, "opus") || !strcmp(e, "mid") || !strcmp(e, "midi");
 }
 static bool isMidiFile(const char * n) { const char * e = fileExt(n); return !strcmp(e, "mid") || !strcmp(e, "midi"); }
 

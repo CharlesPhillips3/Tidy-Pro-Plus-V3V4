@@ -149,7 +149,7 @@ static const char * mimeOf(const std::string & p)
   if (!strcmp(e, "mid") || !strcmp(e, "midi")) return "audio/midi";
   if (!strcmp(e, "m4a")) return "audio/mp4";
   if (!strcmp(e, "wav")) return "audio/wav";
-  if (!strcmp(e, "ogg")) return "audio/ogg";
+  if (!strcmp(e, "ogg") || !strcmp(e, "opus")) return "audio/ogg";
   if (!strcmp(e, "bmp")) return "image/bmp";
   if (!strcmp(e, "gif")) return "image/gif";
   if (!strcmp(e, "js") || !strcmp(e, "mjs")) return "text/javascript";

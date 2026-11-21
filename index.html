@@ -99,6 +99,15 @@ table.mt tr.tot td{font-weight:700;border-bottom:0;padding-top:8px}
 .con-out .t{color:#6f8aa6}.con-out .bad{color:#ff8a73;font-weight:700}.con-out .warn{color:#ffd84d}.con-out .me{color:#7fd6a4}
 .con-send{display:flex;gap:8px;margin-top:8px}
 .con-send input{flex:1;font:13px ui-monospace,Menlo,Consolas,monospace;background:var(--ink);color:var(--text);border:1px solid var(--divider);border-radius:8px;padding:7px 10px}
+.promo .card h3{margin-bottom:10px}
+.ba{display:grid;grid-template-columns:150px 1fr 70px;gap:10px;align-items:center;font-size:14px;margin:6px 0}
+.ba span{color:var(--muted)}.ba b{text-align:right;font-variant-numeric:tabular-nums}
+.bb{height:12px;background:var(--ink);border-radius:999px;overflow:hidden}.bb div{height:100%;background:#8aa0b8;border-radius:999px}.bb div.go{background:var(--free)}
+.big-save{font-size:26px;font-weight:800;color:var(--free);margin:8px 0 2px}
+.drop{border:2px dashed var(--divider);border-radius:14px;padding:28px;text-align:center;color:var(--muted);font-size:16px}
+.drop.on{border-color:var(--accent);color:var(--accent)}
+#shList td:nth-child(n+2){font-variant-numeric:tabular-nums;white-space:nowrap}
+#shList a{color:var(--accent)}
 details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var(--muted);font-size:14px}
 @media(max-width:560px){h1{font-size:30px}header img{width:72px;height:72px}}
 </style>
@@ -195,6 +204,44 @@ details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var
     </div>
   </details>
 
+  <h2 id="shrink">Make room: shrink your music and photos</h2>
+  <p>The board keeps about 7.3 MB of your files. Shrunk, that's room for a lot more. Music becomes <b>Opus</b>, a modern
+  codec that sounds about the same as an MP3 at a third of the size, and keeps its song title, artist, album and cover.
+  Photos are resized and saved small: a JPEG that TidyOS Pro's Pictures app can open, or AVIF for The Shelf.
+  It all happens in this browser, so nothing is uploaded anywhere.</p>
+  <div class="grid promo">
+    <div class="card">
+      <span class="tag">Music</span>
+      <h3>A 4-minute song</h3>
+      <div class="ba"><span>MP3, 128 kbps</span><div class="bb"><div style="width:100%"></div></div><b>3.8 MB</b></div>
+      <div class="ba"><span>Shrunk (Opus 48 kbps)</span><div class="bb"><div class="go" style="width:38%"></div></div><b>1.4 MB</b></div>
+      <div class="big-save">62% smaller</div>
+      <small>In 7.3 MB: about 2 songs as MP3, about 5 shrunk.</small>
+    </div>
+    <div class="card">
+      <span class="tag">Photos</span>
+      <h3>A 12-megapixel phone photo</h3>
+      <div class="ba"><span>JPEG or iPhone HEIC</span><div class="bb"><div style="width:100%"></div></div><b>~3.5 MB</b></div>
+      <div class="ba"><span>Shrunk for TidyOS Pro</span><div class="bb"><div class="go" style="width:6%"></div></div><b>~200 KB</b></div>
+      <div class="big-save">about 95% smaller</div>
+      <small>In 7.3 MB: about 2 photos as they come, about 35 shrunk. (1280 px, which is still twice the board's screen.)</small>
+    </div>
+  </div>
+  <div class="card shrink" style="margin-top:12px">
+    <div class="pk-top" style="margin-bottom:10px">
+      <div class="seg" role="radiogroup" aria-label="For">
+        <label><input type="radio" name="shFor" value="tidy" checked> For TidyOS Pro</label>
+        <label><input type="radio" name="shFor" value="shelf"> For The Shelf (AVIF photos)</label>
+      </div>
+      <label class="btn alt" style="padding:8px 16px">Choose files&hellip;<input type="file" id="shPick" multiple accept="audio/*,image/*,.heic,.heif,.mp3,.m4a,.flac,.wav,.ogg" hidden></label>
+    </div>
+    <div class="drop" id="shDrop">Drop MP3s and photos here</div>
+    <table class="mt" id="shList" hidden><tr><th>File</th><th>Before</th><th>After</th><th>Saved</th><th></th></tr></table>
+    <div id="shTotal" class="muted" style="margin-top:8px"></div>
+    <button class="btn" id="shZip" hidden style="margin-top:10px">Download all (.zip)</button>
+    <p class="muted" style="margin-top:10px">Then drop the shrunk files onto the TidyOS Pro desktop in your browser, and pick a folder. Easier still: drop your MP3s and photos straight onto the desktop, and TidyOS Pro shrinks them the same way as they go in (hold Alt while dropping to send them as they are).</p>
+  </div>
+
   <h2>3. Wire it up</h2>
   <table>
     <tr><th>Part</th><th>Heltec V4 pins</th><th>Notes</th></tr>
@@ -270,6 +317,42 @@ PRG: switch  hold: go  4s</div>
 
   <p class="muted" style="margin-top:36px">Source, build notes and wiring: <a href="https://github.com/hardwaremack-prog/Tidy-Pro-Plus">github.com/hardwaremack-prog/Tidy-Pro-Plus</a> (copied from <a href="https://github.com/CharlesPhillips3/TidyOS-Pro">TidyOS Pro</a>) &middot; Based on <a href="https://github.com/hardwaremack-prog/TidyOS-ESP32">TidyOS</a> and <a href="https://github.com/hardwaremack-prog/The-Shelf-Heltec-V4900mhzMesh">The Shelf for Heltec</a>. Built on FabGL (GPL v3), RadioLib, U8g2.</p>
 </div>
+<script src="shrink/shrink.js"></script>
+<script src="shrink/photo.js"></script>
+<script src="shrink/zip.js"></script>
+<script>
+// ---------- Shrink music and photos (in this browser) ----------
+(function(){
+ var done=[],busyQ=Promise.resolve(),tB=0,tA=0;
+ var $=function(i){return document.getElementById(i);};
+ var kb=function(n){return n>=1048576?(n/1048576).toFixed(1)+' MB':Math.max(1,Math.round(n/1024))+' KB';};
+ function target(){return document.querySelector('input[name=shFor]:checked').value;}
+ function row(name){var tr=document.createElement('tr');tr.innerHTML='<td></td><td></td><td>working...</td><td></td><td></td>';tr.cells[0].textContent=name;$('shList').appendChild(tr);$('shList').hidden=false;return tr;}
+ function one(f){
+  var tr=row(f.name);tr.cells[1].textContent=kb(f.size);
+  var job=canShrink(f)?shrinkAudio(f,function(p){tr.cells[2].textContent=p+'%';})
+         :isPhoto(f)?(target()=='shelf'?shrinkPhoto(f,'avif',2048):shrinkPhoto(f,'jpeg',1280))
+         :Promise.reject(new Error('not music or a photo'));
+  return job.then(function(o){
+   return o.arrayBuffer().then(function(ab){
+    var d=new Uint8Array(ab);done.push({name:o.name,data:d});tB+=f.size;tA+=o.size;
+    tr.cells[0].textContent=f.name+(o.name!=f.name?'  \u2192  '+o.name:'');
+    tr.cells[2].textContent=kb(o.size);
+    tr.cells[3].innerHTML='<b style="color:var(--free)">'+Math.max(0,Math.round(100-o.size*100/f.size))+'%</b>';
+    var a=document.createElement('a');a.textContent='Save';a.href=URL.createObjectURL(o);a.download=o.name;tr.cells[4].appendChild(a);
+    $('shTotal').innerHTML='Before: <b>'+kb(tB)+'</b> &nbsp; After: <b>'+kb(tA)+'</b> &nbsp; <b style="color:var(--free)">'+Math.round(100-tA*100/tB)+'% smaller</b>';
+    $('shZip').hidden=false;});
+  }).catch(function(e){tr.cells[2].textContent='skipped';tr.cells[3].textContent=(e&&e.message)||'';});
+ }
+ function add(list){[].slice.call(list).forEach(function(f){busyQ=busyQ.then(function(){return one(f);});});}
+ var dz=$('shDrop');
+ dz.addEventListener('dragover',function(e){e.preventDefault();dz.classList.add('on');});
+ dz.addEventListener('dragleave',function(){dz.classList.remove('on');});
+ dz.addEventListener('drop',function(e){e.preventDefault();dz.classList.remove('on');add(e.dataTransfer.files);});
+ $('shPick').onchange=function(){add(this.files);this.value='';};
+ $('shZip').onclick=function(){var a=document.createElement('a');a.href=URL.createObjectURL(makeZip(done));a.download='shrunk-for-tidyos.zip';a.click();};
+})();
+</script>
 <script type="module">
 // Whole-board flash backup and restore over USB, with esptool-js.
 const ESPTOOL = 'https://unpkg.com/esptool-js@0.5.7/bundle.js';
