@@ -629,18 +629,23 @@ static inline uint32_t rowHash(const uint8_t * row, int bytes)
   return h | 1;      // never 0, so 0 can mean "not sent yet"
 }
 
-// puts the next run of changed rows (up to 24) into the outbox; returns its size, 0 = nothing changed
+// puts the next run of changed rows (up to 10-16) into the outbox; returns its size, 0 = nothing changed.
+// The search goes on from where the last run ended and wraps round, so every changed row gets its turn. (It used
+// to start at the top each time: with a game changing ~100 rows a frame, the rows near the top changed again before
+// the search got further down, so lower rows could wait for ages and the browser kept old bits of the picture.)
+static int s_scanY = 0;
 static size_t queueChanges()
 {
   if (outPending()) return 0;
   const int rb = gColors == 8 ? 240 : gColors == 2 ? 80 : 160;
   const int maxRows = (int)((sizeof(s_ob) - 8) / rb);
-  for (int y = 0; y < SCREEN_H; ++y) {
+  for (int k = 0; k < SCREEN_H; ++k) {
+    int y = (s_scanY + k) % SCREEN_H;
     const uint8_t * row = (const uint8_t *)fabgl::VGAPalettedController::sgetScanline(y);
     if (rowHash(row, rb) == s_hash[y]) continue;
     int y0 = y, n = 0;
     uint8_t * out = s_ob + 8;
-    while (y < SCREEN_H && n < maxRows) {
+    while (y < SCREEN_H && n < maxRows) {         // a run doesn't wrap: it stops at the bottom row
       const uint8_t * r = (const uint8_t *)fabgl::VGAPalettedController::sgetScanline(y);
       // copy first, then remember the hash of the copy: the other core may be drawing into this row
       // right now, and the browser must be known to have exactly what was sent (hashing the live row
@@ -651,6 +656,8 @@ static size_t queueChanges()
       s_hash[y] = hh;
       ++n; ++y;
     }
+    if (!n) continue;                             // (it changed back while being copied)
+    s_scanY = y % SCREEN_H;                       // next time, carry on from here
     size_t len = 4 + (size_t)n * rb;
     s_ob[4] = 2; s_ob[5] = y0 & 255; s_ob[6] = y0 >> 8; s_ob[7] = n;
     if (len >= 126) {                                // WebSocket: 2-byte length form
@@ -758,7 +765,7 @@ static void handleHttp(WiFiClient c, const std::string & req)
     c.write((const uint8_t *)resp.data(), resp.size());
     c.setNoDelay(true);
     s_ws = c;
-    memset(s_hash, 0, sizeof(s_hash));
+    memset(s_hash, 0, sizeof(s_hash)); s_scanY = 0;
     s_obLen = s_obPos = 0; s_outStuck = 0;
     sendPalette(s_ws);
     {   // version + uptime for the page's top bar (the page keeps counting from here)

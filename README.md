@@ -28,6 +28,12 @@ The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (mad
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
 Version 3.4.5. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
 
+### Next (source only, not built yet): browser screen keeps up with fast games
+- `screen.cpp`: the search for changed screen rows carries on from where the last batch stopped and wraps round,
+  instead of starting at the top every time. Fast games (StuntCopter, Paradrop...) change ~100 rows a frame, so the
+  rows near the top changed again before the search got lower down, and the browser kept old bits of the picture
+  (half a wagon, a stuntman's feet under a cloud). Needs a firmware build (3.4.6).
+
 ### Flasher: TidyOS Pro only with 12.4 MB for files
 - New tick box under the systems, shown when The Shelf is unticked: **Give The Shelf's space to my files**. It
   installs a TidyOS-Pro-only partition table (`source/TidyOSPro/partitions-tidyonly.csv`): The Shelf's program
