@@ -99,6 +99,10 @@ public:
   static const int RH = 18;
   std::string dir;
   int top = 0, sel = -1, count = 0;
+  bool multi = false;                     // "Select several": clicking a file ticks it (folders still open)
+  std::vector<std::string> marked;        // the ticked files' names (in this folder)
+  bool isMarked(const std::string & n) { return std::find(marked.begin(), marked.end(), n) != marked.end(); }
+  void toggleMark(const std::string & n) { auto it = std::find(marked.begin(), marked.end(), n); if (it == marked.end()) marked.push_back(n); else marked.erase(it); }
   std::function<void(const std::string &, bool isDir, bool twice)> onPick;
 
   FileList(uiWindow * p, Point pos, Size sz) : uiControl(p, pos, sz, true, 0) {
@@ -133,7 +137,7 @@ public:
     closedir(d);
     return n;
   }
-  void setDir(const std::string & d) { dir = d; top = 0; sel = -1; count = countAll(); repaint(); }
+  void setDir(const std::string & d) { if (d != dir) marked.clear(); dir = d; top = 0; sel = -1; count = countAll(); repaint(); }
   void scroll(int by) { int t = imax(0, imin(count - rows(), top + by)); if (t != top) { top = t; repaint(); } }
   // highlight the entry with this name (e.g. the song now playing) and scroll it into view; "" or not here = none
   void selectName(const std::string & nm) {
@@ -166,12 +170,14 @@ public:
         int skip = top, row = 0, idx = 0;
         auto drawRow = [&](const char * nm, bool isDir) {
           int y = cr.Y1 + row * RH;
-          bool s = idx == sel;
+          bool mk = multi && !isDir && isMarked(nm);
+          bool s = multi ? mk : idx == sel;
           cv->setBrushColor(s ? T.accent : T.win);
           if (s) cv->fillRectangle(cr.X1, y, cr.X2, y + RH - 1);
           cv->setPenColor(s ? T.accentText : T.text);
           char b[80];
-          snprintf(b, sizeof(b), isDir ? "[%s]" : "%s", nm);
+          if (multi && !isDir) snprintf(b, sizeof(b), "%s %s", mk ? "[x]" : "[  ]", nm);
+          else snprintf(b, sizeof(b), isDir ? "[%s]" : "%s", nm);
           cv->drawText(&FONT_std_14, cr.X1 + 6, y + 2, b);
           ++row;
         };
@@ -200,6 +206,12 @@ public:
         int i = top + (e->params.mouse.status.Y - cr.Y1) / RH;
         std::string nm; bool isDir = false;
         if (i < count && entry(i, nm, isDir)) {
+          if (multi && !isDir) {                          // several-select: a click ticks or unticks the file
+            if (e->id == UIEVT_DBLCLICK) break;
+            toggleMark(nm); sel = i; repaint();
+            if (onPick) onPick(nm, false, false);
+            break;
+          }
           if (e->id == UIEVT_DBLCLICK && (isDir || i != sel)) break;   // folders open on the first click
           sel = i; repaint();
           if (onPick) onPick(nm, isDir, e->id == UIEVT_DBLCLICK);
@@ -1591,6 +1603,8 @@ void openPictures(const char * file);       // media_apps.h
 void openMusicFile(const char * file);
 static bool isMusicFileName(const char * n) { const char * e = fileExt(n); return !strcmp(e, "mp3") || !strcmp(e, "m4a") || !strcmp(e, "wav") || !strcmp(e, "ogg") || !strcmp(e, "opus") || !strcmp(e, "mid") || !strcmp(e, "midi"); }
 
+void openCleanup();
+
 class FilesApp : public AppFrame {
 public:
   static AppFrame * inst;
@@ -1608,8 +1622,9 @@ public:
     updateInfo();
   }
 
-  FilesApp() : AppFrame("Files", nextPos(470, 360), Size(470, 360), &inst) {
-    fl = new FileList(this, Point(cx, cy), Size(320, FileList::RH * 16 + 2));
+  uiButton * multiBtn;
+  FilesApp() : AppFrame("Files", nextPos(470, 420), Size(470, 420), &inst) {
+    fl = new FileList(this, Point(cx, cy), Size(320, FileList::RH * 19 + 2));
     fl->onPick = [this](const std::string & nm, bool isDir, bool twice) {
       if (isDir) { goInto(nm); return; }
       selName = nm; selDir = false;
@@ -1623,15 +1638,47 @@ public:
     button("Rename",     bx, cy + 56,  122)->onClick = [this]() { rename(); };
     button("Delete",     bx, cy + 84,  122)->onClick = [this]() { del(); };
     button("Move to...", bx, cy + 112, 122)->onClick = [this]() { moveSel(); };
-    button("New note",   bx, cy + 146, 122)->onClick = []() { openNeat(nullptr); };
-    button("New sheet",  bx, cy + 174, 122)->onClick = []() { openTidy(nullptr); };
-    shareBtn = button("", bx, cy + 206, 122, 36);
+    multiBtn = button("Select several", bx, cy + 140, 122);
+    multiBtn->onClick = [this]() { setMulti(!fl->multi); };
+    button("Clean up...", bx, cy + 168, 122)->onClick = []() { openCleanup(); };
+    button("New note",   bx, cy + 202, 122)->onClick = []() { openNeat(nullptr); };
+    button("New sheet",  bx, cy + 230, 122)->onClick = []() { openTidy(nullptr); };
+    shareBtn = button("", bx, cy + 262, 122, 36);
     shareBtn->onClick = [this]() { fileServerSet(!fileServerOn()); updateShare(); };
-    button("Scroll up",  bx, cy + 248, 122)->onClick = [this]() { fl->scroll(-10); };
-    button("Scroll down", bx, cy + 276, 122)->onClick = [this]() { fl->scroll(10); };
-    info = label("", cx, cy + 306, 440, 18);
+    button("Scroll up",  bx, cy + 304, 122)->onClick = [this]() { fl->scroll(-10); };
+    button("Scroll down", bx, cy + 332, 122)->onClick = [this]() { fl->scroll(10); };
+    info = label("", cx, cy + 362, 440, 18);
     info->labelStyle().textFont = &FONT_std_12;
     updateShare();
+  }
+
+  void setMulti(bool on) {
+    fl->multi = on; fl->marked.clear(); fl->repaint();
+    multiBtn->setText(on ? "Select: ON" : "Select several");
+    multiBtn->buttonStyle().backgroundColor = on ? T.accent : T.face;
+    multiBtn->buttonStyle().textColor = on ? T.accentText : T.text;
+    multiBtn->repaint();
+    info->setText(on ? "Click files to tick them, then Move to... or Delete. Click Select: ON to stop." : ""); info->repaint();
+    if (!on) updateInfo();
+  }
+
+  // moves one file; between the SD card and the board's own storage it's copied, checked, then deleted
+  static bool moveFile(const std::string & from, const std::string & to) {
+    remove(to.c_str());
+    if (::rename(from.c_str(), to.c_str()) == 0) return true;
+    FILE * a = fopen(from.c_str(), "rb"), * b = a ? fopen(to.c_str(), "wb") : nullptr;
+    long want = fileSize(from.c_str()), got = 0;
+    bool ok = a && b;
+    if (ok) {
+      std::vector<uint8_t> buf(4096);
+      size_t n;
+      while ((n = fread(buf.data(), 1, buf.size(), a)) > 0) { if (fwrite(buf.data(), 1, n, b) != n) { ok = false; break; } got += n; }
+    }
+    if (a) fclose(a);
+    if (b) fclose(b);
+    ok = ok && got == want;
+    if (ok) remove(from.c_str()); else remove(to.c_str());
+    return ok;
   }
 
   void goInto(const std::string & nm) {
@@ -1675,38 +1722,45 @@ public:
     }
   }
 
-  // Move to...: pick the folder (and, if you like, a new name) in the file picker. Between the SD card and the
-  // board's own storage it's copied and then the original deleted (only once the copy is complete).
+  // Move to...: pick the folder (and, if you like, a new name) in the file picker. With several ticked, they all go
+  // to the folder picked (the name in the picker doesn't matter then).
   void moveSel() {
-    if (selName.empty()) { info->setText("Click a file first, then Move to..."); info->repaint(); return; }
-    std::string from = selPath();
-    std::string to = askFile((std::string("Move ") + selName + " to...").c_str(), "Move here", selName.c_str(), fl->dir);
-    if (to.empty() || to == from) return;
-    if (fileSize(to.c_str()) >= 0 &&
-        gApp->messageBox("Move", "A file with that name is already there. Replace it?", "Replace", "Cancel", nullptr, uiMessageBoxIcon::Question) != uiMessageBoxResult::Button1) return;
-    remove(to.c_str());
-    bool ok = ::rename(from.c_str(), to.c_str()) == 0;
-    if (!ok) {                                       // another drive: copy, check, then delete the original
-      FILE * a = fopen(from.c_str(), "rb"), * b = a ? fopen(to.c_str(), "wb") : nullptr;
-      long want = fileSize(from.c_str()), got = 0;
-      if (a && b) {
-        std::vector<uint8_t> buf(4096);
-        size_t n;
-        ok = true;
-        while ((n = fread(buf.data(), 1, buf.size(), a)) > 0) { if (fwrite(buf.data(), 1, n, b) != n) { ok = false; break; } got += n; }
+    std::vector<std::string> names = fl->multi ? fl->marked : std::vector<std::string>();
+    if (names.empty() && !selName.empty() && !fl->multi) names.push_back(selName);
+    if (names.empty()) { info->setText(fl->multi ? "Tick some files first, then Move to..." : "Click a file first, then Move to..."); info->repaint(); return; }
+    std::string title = names.size() == 1 ? "Move " + names[0] + " to..." : "Move " + std::to_string(names.size()) + " files to... (pick the folder)";
+    std::string to = askFile(title.c_str(), "Move here", names[0].c_str(), fl->dir);
+    if (to.empty()) return;
+    std::string destDir = dirOf(to);
+    int moved = 0, failed = 0;
+    for (size_t i = 0; i < names.size(); ++i) {
+      std::string from = joinPath(fl->dir.c_str(), names[i].c_str());
+      std::string dest = names.size() == 1 ? to : joinPath(destDir.c_str(), names[i].c_str());
+      if (dest == from) continue;
+      if (fileSize(dest.c_str()) >= 0) {
+        std::string q = names[i] + " is already there. Replace it?";
+        if (gApp->messageBox("Move", q.c_str(), "Replace", "Skip", nullptr, uiMessageBoxIcon::Question) != uiMessageBoxResult::Button1) continue;
       }
-      if (a) fclose(a);
-      if (b) fclose(b);
-      ok = ok && a && b && got == want;
-      if (ok) remove(from.c_str()); else remove(to.c_str());
+      if (names.size() > 1) { char b[80]; snprintf(b, sizeof(b), "Moving %d of %d: %.40s", (int)i + 1, (int)names.size(), names[i].c_str()); info->setText(b); info->repaint(); }
+      if (moveFile(from, dest)) ++moved; else ++failed;
     }
-    if (!ok) { gApp->messageBox("Move", "Couldn't move it (is there room where it's going?). The file is still where it was.", "OK", nullptr, nullptr, uiMessageBoxIcon::Warning); return; }
     selName.clear();
+    fl->marked.clear();
     fl->setDir(fl->dir);
-    info->setText(("Moved to " + to).substr(0, 70).c_str()); info->repaint();
+    char b[110];
+    snprintf(b, sizeof(b), "Moved %d file%s to %.50s%s", moved, moved == 1 ? "" : "s", destDir.c_str(), failed ? " - some couldn't be moved (room?)" : "");
+    info->setText(b); info->repaint();
   }
 
   void del() {
+    if (fl->multi) {                               // several ticked: delete them all (after asking once)
+      if (fl->marked.empty()) { info->setText("Tick some files first, then Delete."); info->repaint(); return; }
+      std::string q = "Delete " + std::to_string(fl->marked.size()) + " ticked file" + (fl->marked.size() == 1 ? "" : "s") + "?";
+      if (gApp->messageBox("Delete", q.c_str(), "Delete", "Cancel", nullptr, uiMessageBoxIcon::Warning) != uiMessageBoxResult::Button1) return;
+      for (auto & n : fl->marked) remove(joinPath(fl->dir.c_str(), n.c_str()).c_str());
+      fl->marked.clear(); fl->setDir(fl->dir); updateInfo();
+      return;
+    }
     if (selName.empty()) return;
     std::string q = std::string("Delete \"") + selName + "\"?";
     if (gApp->messageBox("Delete", q.c_str(), "Delete", "Cancel", nullptr, uiMessageBoxIcon::Warning) == uiMessageBoxResult::Button1) {
@@ -1736,6 +1790,184 @@ public:
   }
 };
 AppFrame * FilesApp::inst = nullptr;
+
+// ---------------------------------------------------------------- Clean up (from Files)
+// Looks through all of the board's storage (or the SD card) for space that can safely be given back, shows
+// what it found with its size, and deletes only the groups that are ticked.
+class CleanupApp : public AppFrame {
+public:
+  static AppFrame * inst;
+  enum { G_PART, G_UPDATE, G_INCOMING, G_TWINS, G_DUPES, G_EMPTY, NG };
+  struct Group { std::vector<std::string> paths; int64_t bytes = 0; };
+  Group g[NG];
+  uiCheckBox * cb[NG];
+  uiLabel * lb[NG], * head, * big, * status;
+  uiButton * whereBtn;
+  bool onSd = false;
+  std::vector<std::pair<long, std::string>> biggest;
+
+  CleanupApp() : AppFrame("Clean up", nextPos(520, 400), Size(520, 400), &inst) {
+    head = label("", cx, cy, 340, 18);
+    whereBtn = button("", cx + 350, cy - 2, 150);
+    whereBtn->onClick = [this]() { if (gSDMounted) { onSd = !onSd; scan(); } };
+    int y = cy + 28;
+    for (int i = 0; i < NG; ++i) {
+      cb[i] = S(new uiCheckBox(this, Point(cx, y + 1), Size(16, 16)));
+      lb[i] = label("", cx + 22, y, 480, 18);
+      y += 24;
+    }
+    label("Biggest files (delete them in Files if you don't need them):", cx, y + 6, 480, 18);
+    big = label("", cx, y + 26, 490, 92);
+    big->labelStyle().textFont = &FONT_std_12;
+    y += 124;
+    button("Look again", cx, y, 110)->onClick = [this]() { scan(); };
+    button("Clean up ticked", cx + 118, y, 150)->onClick = [this]() { clean(); };
+    status = label("", cx, y + 30, 490, 18);
+    onSd = gSDMounted;
+    scan();
+  }
+
+  std::string root() { return onSd ? SD_MOUNT : FLASH_MOUNT; }
+  static bool isBigAudio(const std::string & n) {
+    const char * e = fileExt(n.c_str());
+    return !strcasecmp(e, "mp3") || !strcasecmp(e, "wav") || !strcasecmp(e, "m4a") || !strcasecmp(e, "flac") || !strcasecmp(e, "aac");
+  }
+  static std::string stemOf(const std::string & n) { size_t d = n.rfind('.'); return d == std::string::npos ? n : n.substr(0, d); }
+  static uint32_t fileHash(const std::string & p) {
+    FILE * f = fopen(p.c_str(), "rb");
+    if (!f) return 0;
+    std::vector<uint8_t> buf(4096);
+    uint32_t h = 2166136261u; size_t n;
+    while ((n = fread(buf.data(), 1, buf.size(), f)) > 0) for (size_t i = 0; i < n; ++i) h = (h ^ buf[i]) * 16777619u;
+    fclose(f);
+    return h | 1;
+  }
+  struct FileInfo { std::string path; long size; };
+  std::vector<FileInfo> files;
+  std::vector<std::string> dirs;
+  void walk(const std::string & d, int depth) {
+    if (depth > 8) return;
+    DIR * dd = opendir(d.c_str());
+    if (!dd) return;
+    struct dirent * e;
+    std::vector<std::string> subs;
+    while ((e = readdir(dd)) != nullptr) {
+      if (e->d_name[0] == '.' || !strcmp(e->d_name, "System Volume Information")) continue;
+      std::string p = d + "/" + e->d_name;
+      if (e->d_type == DT_DIR) subs.push_back(p);
+      else files.push_back({ p, fileSize(p.c_str()) });
+    }
+    closedir(dd);
+    for (auto & sd : subs) { dirs.push_back(sd); walk(sd, depth + 1); }
+  }
+  void add(int gi, const std::string & p, long sz) { g[gi].paths.push_back(p); g[gi].bytes += sz; }
+
+  void scan() {
+    status->setText("Looking..."); status->repaint();
+    for (auto & x : g) { x.paths.clear(); x.bytes = 0; }
+    files.clear(); dirs.clear(); biggest.clear();
+    std::string r = root();
+    walk(r, 0);
+    std::string home = onSd ? std::string(SD_MOUNT) : std::string(FLASH_HOME);
+    for (auto & f : files) {
+      const std::string & p = f.path;
+      if (p.size() > 5 && p.compare(p.size() - 5, 5, ".part") == 0) add(G_PART, p, f.size);
+      else if (p == r + "/tidyos/update.bin") add(G_UPDATE, p, f.size);
+      else if (p.compare(0, home.size() + 10, home + "/Incoming/") == 0) add(G_INCOMING, p, f.size);
+    }
+    // songs that also have a shrunk .opus copy in the same folder (same name): the big one can go
+    for (auto & f : files) {
+      std::string n = baseName(f.path);
+      if (!isBigAudio(n)) continue;
+      std::string twin = dirOf(f.path) + "/" + stemOf(n) + ".opus";
+      for (auto & o : files) if (o.path == twin) { add(G_TWINS, f.path, f.size); break; }
+    }
+    // exact copies: same size, then the same contents; the one with the shortest path stays
+    {
+      std::vector<FileInfo> sorted = files;
+      std::sort(sorted.begin(), sorted.end(), [](const FileInfo & a, const FileInfo & b) { return a.size < b.size; });
+      for (size_t i = 0; i < sorted.size();) {
+        size_t j = i; while (j < sorted.size() && sorted[j].size == sorted[i].size) ++j;
+        if (j - i > 1 && sorted[i].size > 0) {
+          std::vector<std::pair<uint32_t, std::string>> hs;
+          for (size_t k = i; k < j; ++k) hs.push_back({ fileHash(sorted[k].path), sorted[k].path });
+          std::sort(hs.begin(), hs.end(), [](const std::pair<uint32_t, std::string> & a, const std::pair<uint32_t, std::string> & b) {
+            return a.first != b.first ? a.first < b.first : a.second.size() < b.second.size(); });
+          for (size_t k = 1; k < hs.size(); ++k)
+            if (hs[k].first == hs[k - 1].first && hs[k].first) {
+              bool dup = false; for (auto & q : g[G_TWINS].paths) if (q == hs[k].second) dup = true;
+              if (!dup) add(G_DUPES, hs[k].second, sorted[i].size);
+            }
+        }
+        i = j;
+      }
+    }
+    // empty folders (not the main ones)
+    for (auto & d : dirs) {
+      std::string n = baseName(d);
+      if (d == home || n == "Music" || n == "Pictures" || n == "Documents" || n == "MIDI" || n == "tidyos" || n == "TidyPro") continue;
+      bool empty = true;
+      DIR * dd = opendir(d.c_str());
+      if (dd) { struct dirent * e; while ((e = readdir(dd)) != nullptr) if (e->d_name[0] != '.') { empty = false; break; } closedir(dd); }
+      if (empty) add(G_EMPTY, d, 0);
+    }
+    // the biggest files
+    for (auto & f : files) biggest.push_back({ f.size, f.path });
+    std::sort(biggest.begin(), biggest.end(), [](const std::pair<long, std::string> & a, const std::pair<long, std::string> & b) { return a.first > b.first; });
+    show();
+  }
+
+  static std::string sz(int64_t b) { char t[24]; if (b >= 1048576) snprintf(t, sizeof(t), "%.1f MB", b / 1048576.0); else snprintf(t, sizeof(t), "%u KB", (unsigned)((b + 1023) / 1024)); return t; }
+  void show() {
+    int64_t t = 0, u = 0;
+    bool have = onSd ? FileBrowser::getFSInfo(DriveType::SDCard, 0, &t, &u) : internalFSInfo(t, u);
+    std::string h = std::string(onSd ? "SD card" : "Board storage") + (have ? ": " + sz(t - u) + " free of " + sz(t) : "");
+    head->setText(h.c_str()); head->repaint();
+    whereBtn->setText(gSDMounted ? (onSd ? "Look at the board" : "Look at the SD card") : "(no SD card)"); whereBtn->repaint();
+    static const char * NAME[NG] = { "Unfinished copies (.part files from a copy that stopped)",
+      "An old update download (tidyos/update.bin)", "Files dropped on the desktop, still in Incoming",
+      "Songs that also have a shrunk Opus copy (the big one goes)", "Exact copies of other files (one of each stays)",
+      "Empty folders" };
+    int64_t all = 0;
+    for (int i = 0; i < NG; ++i) {
+      char b[160];
+      if (i == G_EMPTY) snprintf(b, sizeof(b), "%s: %d", NAME[i], (int)g[i].paths.size());
+      else snprintf(b, sizeof(b), "%s: %d, %s", NAME[i], (int)g[i].paths.size(), sz(g[i].bytes).c_str());
+      lb[i]->setText(b); lb[i]->repaint();
+      bool safe = i != G_INCOMING;                     // (dropped files may still be wanted: not ticked to start with)
+      cb[i]->setChecked(!g[i].paths.empty() && safe); cb[i]->repaint();
+      if (cb[i]->checked()) all += g[i].bytes;
+    }
+    std::string bl;
+    for (size_t i = 0; i < biggest.size() && i < 5; ++i) {
+      std::string p = biggest[i].second.substr(root().size());
+      if (p.size() > 60) p = "..." + p.substr(p.size() - 57);
+      bl += sz(biggest[i].first) + "   " + p + "\n";
+    }
+    big->setText(bl.c_str()); big->repaint();
+    status->setText(all ? ("Ticked: " + sz(all) + " can be freed. Untick anything you want to keep.").c_str() : "Nothing that needs cleaning up."); status->repaint();
+  }
+
+  void clean() {
+    int64_t freed = 0; int n = 0;
+    for (int i = 0; i < NG; ++i) {
+      if (!cb[i]->checked()) continue;
+      if (i == G_EMPTY) { for (auto it = g[i].paths.rbegin(); it != g[i].paths.rend(); ++it) if (rmdir(it->c_str()) == 0) ++n; continue; }
+      for (auto & p : g[i].paths) { long s2 = fileSize(p.c_str()); if (remove(p.c_str()) == 0) { freed += s2 > 0 ? s2 : 0; ++n; } }
+    }
+    scan();
+    std::string m = "Cleaned up: " + std::to_string(n) + " item" + (n == 1 ? "" : "s") + ", " + sz(freed) + " freed.";
+    status->setText(m.c_str()); status->repaint();
+    if (FilesApp::inst) ((FilesApp *)FilesApp::inst)->fl->setDir(((FilesApp *)FilesApp::inst)->fl->dir);
+  }
+};
+AppFrame * CleanupApp::inst = nullptr;
+
+void openCleanup()
+{
+  if (!CleanupApp::inst) new CleanupApp();
+  CleanupApp::inst->open();
+}
 
 void openFiles()
 {

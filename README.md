@@ -26,7 +26,15 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.12. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.13. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.13: Files: Clean up, and several files at once
+- **Files → Clean up...** looks through all of the board's storage (or the SD card) and shows what can be given
+  back, with sizes: unfinished copies (`.part`), an old update download, files left in Incoming, songs that also
+  have a shrunk Opus copy, exact copies of other files (one of each stays) and empty folders, plus the five
+  biggest files. Tick what should go and press **Clean up ticked** (Incoming isn't ticked to start with).
+- **Files → Select several**: click files to tick them, then **Move to...** (pick the folder) or **Delete** does
+  them all.
 
 ### 3.4.12: free space every 5 seconds
 - The taskbar's free flash / SD space is looked up every 5 s (it was every 20 s); the RAM figures stay at every 20 s.
