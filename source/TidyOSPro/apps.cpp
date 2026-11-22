@@ -18,6 +18,7 @@
 #include "print.h"
 #include "spell.h"
 #include "shelfmsg.h"
+#include "rf_engine.h"
 #include "fileserver.h"
 
 using namespace fabgl;
@@ -1961,7 +1962,7 @@ public:
 
   MessagesApp() : AppFrame("Messages", Point(10, 10), Size(620, 442), &inst) {
     shelfBtn = button("The Shelf (Wi-Fi)",     cx,       cy, 150);
-    comsBtn  = button("Coms mesh (2.4 GHz)",   cx + 154, cy, 160);
+    comsBtn  = button(rf::radioOk() ? "Coms mesh 2.4 + 900" : "Coms mesh (2.4 GHz)", cx + 154, cy, 160);
     shelfBtn->onClick = [this]() { setMode(false); };
     comsBtn->onClick  = [this]() { setMode(true); };
     label("My name", cx + 326, cy + 3, 56, 18);
@@ -1975,6 +1976,10 @@ public:
     list->onChange = [this]() { pick(); };
     addBtn = button("Add by address", cx, cy + 342, 186);
     addBtn->onClick = [this]() {
+      if (coms) {                                    // on the mesh: this button turns 900 MHz (LoRa) on and off
+        if (rf::radioOk()) { coms900Set(!gSet.mesh900); setMode(true); }
+        return;
+      }
       char a[48] = "";
       if (gApp->inputBox("Add a Shelf", "Address (like 192.168.1.20 or pi.local:8080)", a, sizeof(a) - 1, "Add", "Cancel") == uiMessageBoxResult::Button1 && a[0]) {
         msgAddAddress(a);
@@ -2004,7 +2009,7 @@ public:
     comsBtn->buttonStyle().backgroundColor  = c ? T.accent : T.face;
     comsBtn->buttonStyle().textColor        = c ? T.accentText : T.text;
     shelfBtn->repaint(); comsBtn->repaint();
-    addBtn->setText(c ? "(boards found by radio)" : "Add by address");
+    addBtn->setText(c ? (rf::radioOk() ? (gSet.mesh900 ? "900 MHz LoRa: ON" : "900 MHz LoRa: OFF") : "(boards found by radio)") : "Add by address");
     addBtn->repaint();
     listHead->setText(c ? "Boards on the mesh" : "Shelves");
     listHead->repaint();
@@ -2053,7 +2058,10 @@ public:
     if (coms) {
       char b[160];
       int ch = comsChannel();
-      snprintf(b, sizeof(b), comsUp() ? "Coms mesh on Wi-Fi channel %d. Shelf boards must be on the same channel to hear each other\n(boards on their own Wi-Fi use channel 1; boards on your home Wi-Fi use its channel)." : "The 2.4 GHz radio couldn't start the mesh.", ch);
+      if (rf::radioOk())                             // a V4: 2.4 GHz and 900 MHz, one mesh (same packets and rules as the Shelf boards)
+        snprintf(b, sizeof(b), comsUp() ? "2.4 GHz on Wi-Fi channel %d (Shelf boards on the same channel).\n%s" : "The mesh is off (Switches turns it on).\n%s", ch, coms900Status().c_str());
+      else
+        snprintf(b, sizeof(b), comsUp() ? "Coms mesh on Wi-Fi channel %d. Shelf boards must be on the same channel to hear each other\n(boards on their own Wi-Fi use channel 1; boards on your home Wi-Fi use its channel)." : "The 2.4 GHz radio couldn't start the mesh.", ch);
       if (strcmp(status->text(), b)) { status->setText(b); status->repaint(); }
     } else {
       std::string st = msgStatus();
@@ -3379,7 +3387,7 @@ public:
     }
     show(1, gSet.meshOn, "ON", "OFF");
     if (gSet.meshOn && !msgStarted()) set(note[1], "Starts once TidyOS is on your home Wi-Fi. Coms boards nearby.");
-    else set(note[1], gSet.meshOn ? "Talking with Coms boards nearby (2.4 GHz). Uses a few KB." : "Off: no Coms mesh. Shelf messages on Wi-Fi still work.");
+    else set(note[1], gSet.meshOn ? (rf::radioOk() && gSet.mesh900 ? "Talking with Coms boards nearby (2.4 GHz + 900 MHz LoRa)." : "Talking with Coms boards nearby (2.4 GHz). Uses a few KB.") : "Off: no Coms mesh. Shelf messages on Wi-Fi still work.");
     show(2, gSet.ledOn, "ON", "OFF");
     set(note[2], gSet.ledOn ? "Breathing = ready, flicker = SD card busy. Uses ~2 KB." : "Off: the white LED stays dark. Saves ~2 KB.");
     char b[80];

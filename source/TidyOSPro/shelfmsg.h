@@ -51,5 +51,7 @@ void        comsSetOn(bool on);                // the Switches window (off by de
 int         comsChannel();
 int         comsUnread();
 void        comsMarkRead();
+void        coms900Set(bool on);              // the 900 MHz LoRa side of the mesh (Heltec V4)
+std::string coms900Status();
 bool        msgStarted();                       // false until msgBegin (HTML5: until on home Wi-Fi)
 void        comsCounts(int & sent, int & heard);   // ESP-NOW frames since start

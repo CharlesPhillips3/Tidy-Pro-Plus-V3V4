@@ -195,8 +195,8 @@ function weather(){if(!ws||ws.readyState!=1||Date.now()-wxAt<10*60000)return;wxA
      send([17].concat(Array.from(new TextEncoder().encode(s.join(',')))));}catch(e){}
     wxSend(Math.round(w.current.temperature_2m)+'|'+w.current.weather_code+'|'+Math.round(w.daily.temperature_2m_max[0])+'|'+Math.round(w.daily.temperature_2m_min[0])+'|'+(+g.lat).toFixed(2)+'|'+(+g.lon).toFixed(2)+'|'+(g.city||'').replace(/[^\x20-\x7e]/g,'').slice(0,24));})
    .catch(function(){wxSend('E|weather service unreachable|'+(+g.lat).toFixed(2)+'|'+(+g.lon).toFixed(2));throw 1;});})
- .catch(function(e){if(e!==1)wxSend('E|'+(typeof e=='string'?e:'no internet from this browser'));wxAt=Date.now()-9*60000;});}
-setInterval(weather,30000);
+ .catch(function(e){if(e!==1)wxSend('E|'+(typeof e=='string'?e:'no internet from this browser'));wxAt=Date.now()-9.5*60000;});}
+setInterval(weather,15000);
 
 // ---- TidyOS Pro: field conditions for the desktop panel (wind, humidity, storms, tropo ducting,
 // space weather, NWS alerts). Every series is the last 4 days, one point per 3 hours, newest last.
@@ -218,12 +218,12 @@ function fieldWx(){if(!ws||ws.readyState!=1||Date.now()-fcAt<10*60000)return;fcA
      d.push(ns==null||n9==null||!(z>50)?null:(n9-ns)/z*1000);}
    fcSend('duct',r0(every3(T,d,now)));
    var c=w.current;fcSend('now',[Math.round(c.wind_speed_10m),Math.round(c.wind_gusts_10m),Math.round(c.wind_direction_10m),Math.round(c.relative_humidity_2m),Math.round(c.dew_point_2m*9/5+32),(c.pressure_msl*0.02953).toFixed(2)].join(','));})
-  .catch(function(){fcAt=Date.now()-9*60000;});
+  .catch(function(){fcAt=Date.now()-9.5*60000;});
   // US weather alerts (thunderstorms, wind, winter storms) from the National Weather Service
   fetch('https://api.weather.gov/alerts/active?point='+(+g.lat).toFixed(4)+','+(+g.lon).toFixed(4))
    .then(function(r){return r.json();}).then(function(j){var a=(j.features||[]).map(function(f){return plain(f.properties.event||'')+(f.properties.expires?' until '+new Date(f.properties.expires).toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}):'');});
     fcSend('alert',a.length?a.slice(0,3).join('\n'):'-');}).catch(function(){fcSend('alert','?');});
- }).catch(function(){fcAt=Date.now()-9*60000;});
+ }).catch(function(){fcAt=Date.now()-9.5*60000;});
  // space weather: NOAA SWPC (solar flux, Kp, X-ray)
  fetch('https://services.swpc.noaa.gov/products/noaa-planetary-k-index.json').then(function(r){return r.json();}).then(function(a){
    var rows=a.filter(function(x){return Array.isArray(x)?!isNaN(parseFloat(x[1])):x&&x.Kp!=null;}).map(function(x){return Array.isArray(x)?parseFloat(x[1]):+x.Kp;});
@@ -231,15 +231,15 @@ function fieldWx(){if(!ws||ws.readyState!=1||Date.now()-fcAt<10*60000)return;fcA
  fetch('https://services.swpc.noaa.gov/json/f107_cm_flux.json').then(function(r){return r.json();}).then(function(a){var x=a[a.length-1];var ok=a.filter(function(e){return e.flux!=null;});if(ok.length)x=ok.reduce(function(p,q){return new Date(q.time_tag)>new Date(p.time_tag)?q:p;});fcSend('sfi',Math.round(x.flux));}).catch(function(){});
  fetch('https://services.swpc.noaa.gov/json/goes/primary/xrays-6-hour.json').then(function(r){return r.json();}).then(function(a){var l=a.filter(function(e){return e.energy=='0.1-0.8nm';});if(!l.length)return;var f=l[l.length-1].flux,c='A',m=1e-8;
    if(f>=1e-4){c='X';m=1e-4;}else if(f>=1e-5){c='M';m=1e-5;}else if(f>=1e-6){c='C';m=1e-6;}else if(f>=1e-7){c='B';m=1e-7;}fcSend('xray',c+(f/m).toFixed(1));}).catch(function(){});}
-setInterval(fieldWx,30000);
+setInterval(fieldWx,15000);
 var ctAt=0;function cityTemps(){if(!ws||ws.readyState!=1||Date.now()-ctAt<15*60000)return;ctAt=Date.now();   // Moscow, Los Angeles, Tokyo
  fetch('https://api.open-meteo.com/v1/forecast?latitude=55.76,34.05,35.68&longitude=37.62,-118.24,139.69&current=temperature_2m&temperature_unit=fahrenheit')
   .then(function(r){return r.json();}).then(function(a){if(!Array.isArray(a))a=[a];
    send([18].concat(Array.from(new TextEncoder().encode(a.map(function(c){return Math.round(c.current.temperature_2m);}).join(',')))));})
   .catch(function(){var L=[[55.76,37.62],[34.05,-118.24],[35.68,139.69]];        // one at a time instead
    Promise.all(L.map(function(c){return fetch('https://api.open-meteo.com/v1/forecast?latitude='+c[0]+'&longitude='+c[1]+'&current=temperature_2m&temperature_unit=fahrenheit').then(function(r){return r.json();}).then(function(j){return Math.round(j.current.temperature_2m);});}))
-    .then(function(t){send([18].concat(Array.from(new TextEncoder().encode(t.join(',')))));}).catch(function(){ctAt=Date.now()-14*60000;});});}
-setInterval(cityTemps,30000);
+    .then(function(t){send([18].concat(Array.from(new TextEncoder().encode(t.join(',')))));}).catch(function(){ctAt=Date.now()-14.5*60000;});});}
+setInterval(cityTemps,15000);
 function rep13(s){send([13].concat(Array.from(new TextEncoder().encode(s.slice(0,1000)))));}
 function store(v){var a=v.split('\t'),op=a[0],R=(a[1]||'').replace(/\/+$/,''),B=a[2];
  var chk=function(r){return r.json().then(function(j){if(!r.ok||j.error)throw j.error||('error '+r.status);return j;},function(){throw 'the relay gave an odd answer ('+r.status+')';});};
@@ -252,11 +252,11 @@ function store(v){var a=v.split('\t'),op=a[0],R=(a[1]||'').replace(/\/+$/,''),B=
 var nwAt=0;function plain(t){return t.replace(/[‘’]/g,"'").replace(/[“”]/g,'"').replace(/[–—]/g,'-').replace(/…/g,'...').replace(/&amp;/g,'&').replace(/[^\x20-\x7e]/g,'').trim();}
 function news(){if(!ws||ws.readyState!=1||Date.now()-nwAt<15*60000)return;nwAt=Date.now();
  var feeds=['https://feeds.npr.org/1001/rss.xml','https://feeds.bbci.co.uk/news/rss.xml'],i=0;
- (function next(){if(i>=feeds.length){nwAt=Date.now()-14*60000;return;}var f=feeds[i++];
+ (function next(){if(i>=feeds.length){nwAt=Date.now()-14.5*60000;return;}var f=feeds[i++];
   fetch('https://api.rss2json.com/v1/api.json?rss_url='+encodeURIComponent(f)).then(function(r){return r.json();}).then(function(j){
    if(j.status!='ok'||!j.items||!j.items.length)throw 0;var t=j.items.slice(0,6).map(function(x){return plain(x.title||'').slice(0,120);});
    send([14].concat(Array.from(new TextEncoder().encode(t.join('\n')))));}).catch(next);})();}
-setInterval(news,30000);
+setInterval(news,15000);
 var dropQ=[];
 function note(t,ms){var e=document.getElementById('dn');if(!e){e=document.createElement('div');e.id='dn';e.style.cssText='position:fixed;bottom:18px;right:18px;z-index:22;background:#222;color:#fff;font:15px sans-serif;padding:10px 14px;border-radius:8px;box-shadow:0 4px 16px #0008';document.body.appendChild(e);}
  e.textContent=t;e.style.display='block';clearTimeout(e.t);if(ms)e.t=setTimeout(function(){e.style.display='none';},ms);}

@@ -10,6 +10,7 @@
 #include <time.h>
 #include "stream.h"
 #include "shelfmsg.h"
+#include "rf_engine.h"
 #include "core.h"
 
 // ====================================================================== shared state
@@ -445,6 +446,16 @@ static void onNowRecv(const uint8_t *, const uint8_t * data, int len)
   portEXIT_CRITICAL(&s_ringMux);
 }
 
+// 900 MHz LoRa (Heltec V4): the same packets as ESP-NOW, heard by the radio task
+static void onLoRaRecv(const uint8_t * data, size_t len)
+{
+  if (len < 8 || len > 250 || !s_ring || data[0] != MAGIC0 || data[1] != MAGIC1) return;
+  portENTER_CRITICAL(&s_ringMux);
+  if ((uint8_t)(s_rw - s_rr) < 8) { NowPkt & p = s_ring[s_rw % 8]; p.len = len; memcpy(p.buf, data, len); s_rw++; }
+  portEXIT_CRITICAL(&s_ringMux);
+}
+static void lora900Apply() { rf::meshOnReceive(onLoRaRecv); rf::meshEnable(s_nowUp && gSet.mesh900); }
+
 static void queueTx(const uint8_t * b, size_t len, uint32_t delayMs)
 {
   if (len > 250) return;
@@ -484,7 +495,11 @@ static void sendHello()
   size_t n = 0;
   b[n++] = MAGIC0; b[n++] = MAGIC1; b[n++] = T_HELLO; b[n++] = HOPS; b[n++] = 0;
   memcpy(b + n, &id, 4); n += 4; memcpy(b + n, &s_myNode, 4); n += 4; memcpy(b + n, &s_myNode, 4); n += 4;
+#ifdef TIDYOS_V4
+  b[n++] = 4;       // board type: Heltec V4 (as the Shelf boards say it)
+#else
   b[n++] = 32;      // board type: plain ESP32
+#endif
   b[n++] = 255;     // battery unknown
   b[n++] = 0;       // flags
   std::string nm = s_myName.substr(0, MAX_NAME);
@@ -697,7 +712,10 @@ static void comsPoll()
       else ++it;
     }
   }
-  for (auto & t : due) if (esp_now_send(BCAST, t.buf, t.len) == ESP_OK) s_nowSent++;
+  for (auto & t : due) {
+    if (esp_now_send(BCAST, t.buf, t.len) == ESP_OK) s_nowSent++;
+    if (gSet.mesh900) rf::meshSend(t.buf, t.len);              // and over 900 MHz (V4)
+  }
   // periodic hello + first catch-up
   if (millis() - s_lastHello > 15UL * 60 * 1000 || (s_lastHello == 0 && millis() - s_bootMs > 4000)) sendHello();
   if (s_lastSyncAsk == 0 && millis() - s_bootMs > 6000) askCatchUp();
@@ -816,6 +834,7 @@ void msgBegin()
   if (gSet.meshOn) loadComs();            // mesh history only matters (and only costs RAM) with the mesh on
   s_comsUnread = 0;
   s_nowUp = gSet.meshOn && nowStart();
+  lora900Apply();
   xTaskCreatePinnedToCore(msgTask, "shelfmsg", 12288, nullptr, 1, nullptr, 0);
 }
 
@@ -977,6 +996,7 @@ void comsSetOn(bool on)
   if (on && s_msgStarted) loadComs();
   if (on && !s_nowUp && s_msgStarted) s_nowUp = nowStart();
   if (!on && s_nowUp) { s_nowUp = false; delay(50); esp_now_deinit(); }
+  lora900Apply();
 }
 
 int comsChannel()
@@ -990,3 +1010,15 @@ int comsChannel()
 int  comsUnread()   { return s_comsUnread; }
 void comsCounts(int & sent, int & heard) { sent = s_nowSent; heard = s_nowHeard; }
 void comsMarkRead() { s_comsUnread = 0; }
+void coms900Set(bool on) { gSet.mesh900 = on; settingsSave(); lora900Apply(); }
+std::string coms900Status()
+{
+  if (!rf::radioOk()) return "900 MHz: no radio on this board";
+  if (!gSet.mesh900) return "900 MHz: off";
+  if (!s_nowUp) return "900 MHz: starts with the mesh";
+  int sent, heard; rf::meshCounts(sent, heard);
+  char b[120];
+  if (rf::meshListening()) snprintf(b, sizeof(b), "900 MHz LoRa: listening on 915 MHz, %d sent, %d heard", sent, heard);
+  else snprintf(b, sizeof(b), "900 MHz: paused while an RF app uses the radio");
+  return b;
+}

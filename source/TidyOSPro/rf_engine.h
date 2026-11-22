@@ -23,7 +23,7 @@ constexpr float STEP    = 0.2f;
 constexpr int   WF_ROWS = 64;         // waterfall history (sweeps)
 inline float chFreq(int ch) { return F0 + STEP * ch; }
 
-enum class Mode : uint8_t { Off, Sweep, Listen };
+enum class Mode : uint8_t { Off, Sweep, Listen, Mesh };   // Mesh: the 900 MHz Coms mesh (LoRa) while no RF app has the radio
 
 struct Settings {
   float antGainDbi   = 2.0f;    // stock Heltec V4 antenna is about 2 dBi; a Laird 902-928 whip is 3 dBi
@@ -96,6 +96,14 @@ float powerDensity(float dbm, float gDbi, float fMHz);
 // FCC 47 CFR 1.1310 limits, mW/cm^2, 300-1500 MHz: general public f/1500, occupational f/300
 inline float fccGeneral(float fMHz)      { return fMHz / 1500.0f; }
 inline float fccOccupational(float fMHz) { return fMHz / 300.0f; }
+
+// 900 MHz Coms mesh: the Shelf boards' LoRa text mesh (915.0 MHz, 125 kHz, SF9, CR 4/5, sync 0x12, 16-symbol
+// preamble). The radio listens for it whenever it's wanted and no RF app (Sweep / Listen) is using the radio.
+void  meshEnable(bool on);                                   // wanted or not
+void  meshOnReceive(void (*fn)(const uint8_t *, size_t));    // called from the radio task for each packet heard
+void  meshSend(const uint8_t * b, size_t n);                 // queued; goes out when the channel is clear
+bool  meshListening();                                       // the radio is on the mesh right now
+void  meshCounts(int & sent, int & heard);
 
 // GNSS
 bool gnssStart();               // looks for the module (once); true if NMEA is coming in

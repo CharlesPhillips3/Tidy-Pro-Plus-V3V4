@@ -63,6 +63,7 @@ void settingsLoad()
   gSet.fileShare = s_prefs.getBool("share", false);
   gSet.sdOn      = s_prefs.getBool("sdon", false);
   gSet.meshOn    = s_prefs.getBool("mesh", false);
+  gSet.mesh900   = s_prefs.getBool("m900", true);
   gSet.ledOn     = s_prefs.getBool("led", false);
   gSet.shelfOn   = s_prefs.getBool("shelf", false);
   gSet.tidyBands = s_prefs.getBool("tbands", false);
@@ -91,6 +92,7 @@ void settingsSave()
   s_prefs.putBool("share", gSet.fileShare);
   s_prefs.putBool("sdon", gSet.sdOn);
   s_prefs.putBool("mesh", gSet.meshOn);
+  s_prefs.putBool("m900", gSet.mesh900);
   s_prefs.putBool("led", gSet.ledOn);
   s_prefs.putBool("shelf", gSet.shelfOn);
   s_prefs.putBool("tbands", gSet.tidyBands);
@@ -831,16 +833,16 @@ public:
         }
         {                                           // the clock: repaint as soon as the second changes, so it blinks evenly
           time_t ns = time(nullptr);
-          if (ns != m_lastSec) { m_lastSec = ns; repaint(Rect(imax(0, s_clockX - 4), SCREEN_H - BAR_H, SCREEN_W - 1, SCREEN_H - 1)); }
+          if (ns / 5 != m_lastSec / 5) { m_lastSec = ns; repaint(Rect(imax(0, s_clockX - 4), SCREEN_H - BAR_H, SCREEN_W - 1, SCREEN_H - 1)); }   // every 5 s
         }
 #ifdef TIDYOS_PRO
-        if (m_tick % 2 == 1 && s_newsCount && !showingHint()) { newsTickerStep(); repaint(newsTickerRect()); }   // rolling headlines
+        if (s_newsCount && !showingHint()) { newsTickerStep(canvas()); repaint(newsTickerRect()); }   // rolling headlines, every 100 ms
 #endif
         if (++m_tick % 10) break;                   // the rest once a second (timer: 100 ms)
         netTick();
         gHeapSnap = ramFree(); gMinHeapSnap = ramLowest();
         if (m_tick % 300 == 0) Serial.printf("[TidyOS] still running: up %us, free RAM %uK\n", (unsigned)(millis() / 1000), (unsigned)(gHeapSnap / 1024));
-        repaint(Rect(0, SCREEN_H - BAR_H, SCREEN_W - 1, SCREEN_H - 1));
+        if (m_tick % 50 == 0) repaint(Rect(0, SCREEN_H - BAR_H, SCREEN_W - 1, SCREEN_H - 1));   // the whole bar every 5 s
         {
           // refresh the welcome / pairing hint only when something changed
           std::string sig = inputStatus() + char('0' + inputKeyboards()) + char('0' + inputMice()) + (gSet.ssid.length() ? "w" : "-") + (netConnected() ? "c" : "-");
@@ -959,6 +961,9 @@ private:
     if (!notice.empty()) snprintf(b, sizeof(b), "%s", notice.substr(0, 40).c_str());
 #ifdef TIDYOS_HTML5
     else {                                                                    // (you're looking at it in the browser)
+      static char cache[96] = ""; static uint32_t cacheAt = 0;               // the figures change every 20 s, not every second
+      if (cache[0] && millis() - cacheAt < 20000) return cache;
+      cacheAt = millis();
       size_t ps = heap_caps_get_free_size(MALLOC_CAP_SPIRAM), in = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
       // free storage: the SD card when it's on, otherwise TidyOS's own flash area (looked up every 10 s)
       static char st[28] = ""; static uint32_t stAt = 0;
@@ -976,6 +981,7 @@ private:
       }
       if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM)) snprintf(b, sizeof(b), "RAM %uK + PSRAM %u.%uM%s free", (unsigned)(in / 1024), (unsigned)(ps / 1048576), (unsigned)(ps % 1048576 * 10 / 1048576), st);
       else snprintf(b, sizeof(b), "RAM %uK%s free", (unsigned)(ramFree() / 1024), st);
+      strlcpy(cache, b, sizeof(cache));
     }
 #else
     else snprintf(b, sizeof(b), "Keyboard: %s  Mouse: %s   RAM %uK", inputKeyboards() ? "on" : "--", inputMice() ? "on" : "--", (unsigned)(ramFree() / 1024));
@@ -1061,7 +1067,7 @@ private:
       auto divider = [&](int x) { cv->setPenColor(T.shadow); cv->drawLine(x, by + 4, x, SCREEN_H - 4); cv->setPenColor(T.text); };
       int x = 4;
       {                                                   // the logo: "TidyOS" and a blue PRO badge in a rounded box
-        const fabgl::FontInfo * fT = &FONT_std_14, * fP = &FONT_std_12;
+        const fabgl::FontInfo * fT = &FONT_std_14, * fP = &FONT_std_14;   // PRO the same size as TidyOS
         int wT = cv->textExtent(fT, "TidyOS"), wP = cv->textExtent(fP, "PRO");
         // a snug box: 3 px each side; PRO right after "TidyOS", its blue badge just around the letters
         int x0 = x, y0 = by + 2, y1 = SCREEN_H - 3;
@@ -1071,7 +1077,7 @@ private:
         cv->drawLine(x0, y0 + 2, x0, y1 - 2); cv->drawLine(x1, y0 + 2, x1, y1 - 2);
         cv->setPixel(x0 + 1, y0 + 1); cv->setPixel(x1 - 1, y0 + 1); cv->setPixel(x0 + 1, y1 - 1); cv->setPixel(x1 - 1, y1 - 1);
         cv->drawText(fT, tx, ty(fT), "TidyOS");
-        int py1 = y0 + 2, py2 = y1 - 2;
+        int py1 = y0 + 1, py2 = y1 - 1;                  // the badge fills the box's height (room for the 14 px PRO)
         cv->setBrushColor(T.accent);
         cv->fillRectangle(px1, py1, px2, py2);
         cv->setPenColor(T.face);                          // the badge: straight left edge at the P, rounded on the right
@@ -1096,18 +1102,7 @@ private:
       cv->drawText(&FONT_std_12, x, ty(&FONT_std_12), b);
       x += cv->textExtent(&FONT_std_12, b) + 8;
       divider(x); x += 8;
-      {                                                   // Optimize button, then the RAM / storage figures after it
-        int ox = x, ow = cv->textExtent(&FONT_std_12, "Optimize") + 10;
-        s_optBtn = Rect(ox, by + 3, ox + ow, SCREEN_H - 3);
-        cv->setBrushColor(T.win);
-        cv->fillRectangle(s_optBtn.X1, s_optBtn.Y1, s_optBtn.X2, s_optBtn.Y2);
-        cv->setPenColor(T.shadow);
-        cv->drawRectangle(s_optBtn.X1, s_optBtn.Y1, s_optBtn.X2, s_optBtn.Y2);
-        cv->setPenColor(T.text);
-        cv->drawText(&FONT_std_12, ox + 5, ty(&FONT_std_12), "Optimize");
-        cv->setBrushColor(T.face);
-        x = s_optBtn.X2 + 8;
-      }
+      s_optBtn = Rect(0, 0, 0, 0);                        // (no Optimize button on the bar any more)
       s_ramX = x;
       strlcpy(b, ramText().c_str(), sizeof(b));
       cv->drawText(&FONT_std_12, x, ty(&FONT_std_12), b);
@@ -1133,7 +1128,7 @@ private:
       time_t now = time(nullptr);
       struct tm tmv;
       localtime_r(&now, &tmv);
-      // the clock: colons blink once a second; seconds too when the bar has room for them
+      // the clock: seconds (in steps of 5) when the bar has room for them
       if (tmv.tm_year > 100) {
         const fabgl::FontInfo * f = &FONT_std_14;
         int h = tmv.tm_hour % 12; if (h == 0) h = 12;
@@ -1147,7 +1142,8 @@ private:
         int w = cv->textExtent(f, hs) + cw + dw + (secs ? cw + dw : 0) + cv->textExtent(f, ap);
         int cx = SCREEN_W - w - 8, cy = by + 3;
         s_clockX = cx;
-        bool on = (tmv.tm_sec & 1) == 0;
+        bool on = true;                                  // steady colon (no blinking); the seconds move every 5 s
+        snprintf(ss, sizeof(ss), "%02d", tmv.tm_sec / 5 * 5);
         cv->drawText(f, cx, cy, hs); cx += cv->textExtent(f, hs);
         if (on) cv->drawText(f, cx, cy, ":"); cx += cw;
         cv->drawText(f, cx, cy, ms); cx += dw;

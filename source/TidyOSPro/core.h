@@ -54,6 +54,7 @@ struct Settings {
   bool   fileShare;   // file sharing web page on
   bool   sdOn;        // use the microSD card (off by default: saves ~23 KB of RAM)
   bool   meshOn;      // Coms wireless mesh (ESP-NOW) on (off by default)
+  bool   mesh900;     // ...and over 900 MHz LoRa too, on a V4 (on by default)
   bool   ledOn;       // blue status light on (off by default)
   bool shelfOn = false;   // Shelf messages over Wi-Fi (start-up switch)
   bool tidyBands = false; // Tidy: shade every other row

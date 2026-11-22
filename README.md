@@ -26,7 +26,21 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.3. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.4. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.4: 900 MHz Coms mesh, two lines of news, a calmer bar
+- **Messages → Coms mesh 2.4 + 900**: on a Heltec V4 the Coms mesh now runs over **900 MHz LoRa** as well as
+  2.4 GHz, with the Shelf boards' rules: 915.0 MHz, 125 kHz, SF9, CR 4/5, sync word 0x12, the same packets, every
+  board a relay (each message passed on once, ids remembered so nothing loops), receipts and catch-up. TidyOS
+  carries messages between its 2.4 GHz and 900 MHz sides, like a Shelf Heltec. The radio listens whenever no RF
+  app (RF Sweep, Meter Traffic...) is using it, and checks the channel is clear before it sends. The button under
+  the board list turns 900 MHz on and off; the status line shows what it has sent and heard.
+- **News**: two lines of headlines above the map, different ones on each, sliding smoothly (2 pixels every
+  0.1 s) instead of jumping a letter at a time. (The wind and storm graphs are a little shorter to make room, and
+  NWS alerts take one line: the first alert and how many more.)
+- The bar: **PRO** is the same size as **TidyOS**; the Optimize button is gone; the clock's colon no longer blinks
+  and its seconds move every 5 s; the RAM figures update every 20 s.
+- A desktop lookup that fails (weather, wind and the rest, headlines, cities) tries again after about 30 seconds.
 
 ### 3.4.3: updates in colour
 - Check for updates no longer switches the screen to black & white: the V4's screen lives in PSRAM, so colour costs

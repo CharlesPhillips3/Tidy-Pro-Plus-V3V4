@@ -456,7 +456,7 @@ static int drawFieldPanel(Canvas * cv, Rect r, int x, int y)
 {
   char b[96];
   const RGB888 red = gColors >= 8 ? themePal(6) : T.text, green = gColors >= 8 ? themePal(7) : T.accent, cyan = gColors >= 8 ? themePal(5) : T.accent;
-  int colW = (PANEL_W - 30) / 2, gw = colW - 4, gh = 24;
+  int colW = (PANEL_W - 30) / 2, gw = colW - 4, gh = 19;   // (19 px: room for two lines of news above the map)
   int x2 = x + colW + 10;
   cv->setPenColor(T.text); cv->setBrushColor(T.win);
   cv->drawLine(x, y - 3, r.X2 - 10, y - 3);
@@ -538,18 +538,20 @@ static int drawFieldPanel(Canvas * cv, Rect r, int x, int y)
   if (s_fAlertN == -1) cv->drawText(&FONT_std_12, x, y, "Alerts: looking them up...");
   else if (s_fAlertN == -2) cv->drawText(&FONT_std_12, x, y, "Alerts: NWS not reachable (US only)");
   else if (s_fAlertN == 0) cv->drawText(&FONT_std_12, x, y, "Alerts: none from the National Weather Service");
-  else for (int i = 0; i < s_fAlertN && i < 2; ++i) {
+  else for (int i = 0; i < s_fAlertN && i < 1; ++i) {            // one line: the first alert (+ how many more)
     cv->setPenColor(red);
-    std::string a = std::string(i == 0 ? "ALERT: " : "            ") + s_fAlert[i];
-    while (a.size() > 6 && cv->textExtent(&FONT_std_12, a.c_str()) > PANEL_W - 22) a.pop_back();
-    cv->drawText(&FONT_std_12, x, y + i * 13, a.c_str());
+    std::string a = std::string("ALERT: ") + s_fAlert[i], more = s_fAlertN > 1 ? " (+" + std::to_string(s_fAlertN - 1) + ")" : "";
+    while (a.size() > 6 && cv->textExtent(&FONT_std_12, (a + more).c_str()) > PANEL_W - 22) a.pop_back();
+    a += more;
+    cv->drawText(&FONT_std_12, x, y, a.c_str());
   }
   cv->setPenColor(T.text);
-  y += s_fAlertN > 1 ? 28 : 15;
+  y += 15;
   // row 5: this board's own readings, live
   if (rf::gSpec && rf::radioOk()) {
     std::lock_guard<std::mutex> lk(rf::gMx);
-    if (rf::mode() == rf::Mode::Off) snprintf(b, sizeof(b), "900 MHz: radio idle (open RF Sweep)");
+    if (rf::meshListening()) { int se, he; rf::meshCounts(se, he); snprintf(b, sizeof(b), "900 MHz: Coms mesh listening, %d sent, %d heard", se, he); }
+    else if (rf::mode() == rf::Mode::Off) snprintf(b, sizeof(b), "900 MHz: radio idle (open RF Sweep)");
     else snprintf(b, sizeof(b), "900 MHz: noise %.0f dBm, busy %.1f%%", rf::gSpec->noiseFloor, rf::gSpec->occupancy * 100);
   } else snprintf(b, sizeof(b), "900 MHz: no radio");
   std::string ln = b;
@@ -560,48 +562,67 @@ static int drawFieldPanel(Canvas * cv, Rect r, int x, int y)
 }
 #endif
 
-// ---- rolling news headlines (Pro): one line above the map, moving a letter at a time.
-// The desktop's timer moves it on and repaints just this strip, so the rest of the panel isn't redrawn.
-static int s_tickPos = 0;           // which character of the joined headlines is at the left edge
-static Rect newsTickerRect() { Rect r = deskPanelRect(); return Rect(r.X1 + 1, r.Y2 - 142, r.X2 - 1, r.Y2 - 127); }
-static std::string newsTickerText()
+// ---- rolling news headlines (Pro): two lines above the map, each with different headlines (the first line
+// takes headlines 1, 3, 5 and the second 2, 4, 6), moving smoothly a couple of pixels at a time. The desktop's
+// timer moves them on and repaints just this strip, so the rest of the panel isn't redrawn.
+struct Ticker { int pos = 0, px = 0; };              // the letter at the left edge, and how far it has slid out
+static Ticker s_tick[2];
+static Rect newsTickerRect() { Rect r = deskPanelRect(); return Rect(r.X1 + 1, r.Y2 - 157, r.X2 - 1, r.Y2 - 127); }
+static std::string newsTickerText(int line)
 {
   std::string t;
-  for (int i = 0; i < s_newsCount; ++i) { t += s_news[i]; t += "   +++   "; }
+  for (int i = line; i < s_newsCount; i += 2) { t += s_news[i]; t += "   +++   "; }
+  if (line == 1 && s_newsCount == 1) t.clear();
   return t;
 }
 static void drawNewsTicker(Canvas * cv)
 {
   Rect k = newsTickerRect();
+  const fabgl::FontInfo * f = &FONT_std_12;
   cv->setBrushColor(T.win);
   cv->fillRectangle(k.X1, k.Y1, k.X2, k.Y2);
   if (!s_newsCount) return;
-  cv->setPenColor(T.text);
   const char * tag = "NEWS";
-  int x0 = k.X1 + 9, tw = cv->textExtent(&FONT_std_12, tag);
-  cv->setBrushColor(T.accent); cv->setPenColor(T.win);
-  cv->fillRectangle(x0 - 3, k.Y1 + 1, x0 + tw + 2, k.Y2 - 1);
-  cv->drawText(&FONT_std_12, x0, k.Y1 + 2, tag);
-  cv->setBrushColor(T.win); cv->setPenColor(T.text);
-  std::string t = newsTickerText();
-  if (t.empty()) return;
-  int n = (int)t.size(), xs = x0 + tw + 8, xe = k.X2 - 8;
-  if (s_tickPos >= n) s_tickPos = 0;
-  std::string vis;                                            // from the current letter on, wrapping round, as much as fits
-  for (int i = 0; i < n * 2 && (int)vis.size() < 200; ++i) {
-    vis += t[(s_tickPos + i) % n];
-    if (xs + cv->textExtent(&FONT_std_12, vis.c_str()) > xe) { vis.pop_back(); break; }
+  int x0 = k.X1 + 9, tw = cv->textExtent(f, tag), xs = x0 + tw + 8, xe = k.X2 - 8;
+  for (int line = 0; line < 2; ++line) {
+    std::string t = newsTickerText(line);
+    if (t.empty()) continue;
+    int n = (int)t.size(), y = k.Y1 + 2 + line * 15;
+    Ticker & tk = s_tick[line];
+    if (tk.pos >= n) { tk.pos = 0; tk.px = 0; }
+    std::string vis;                                          // from the left-edge letter on, wrapping round, until past the right edge
+    for (int i = 0; i < n * 2 && (int)vis.size() < 200; ++i) {
+      vis += t[(tk.pos + i) % n];
+      if (xs - tk.px + cv->textExtent(f, vis.c_str()) > xe + 12) break;
+    }
+    cv->setPenColor(T.text); cv->setBrushColor(T.win);
+    cv->drawText(f, xs - tk.px, y, vis.c_str());
   }
-  cv->drawText(&FONT_std_12, xs, k.Y1 + 2, vis.c_str());
+  cv->setBrushColor(T.win);                                   // tidy edges: the letter sliding out on the left, the one coming in on the right
+  cv->fillRectangle(k.X1, k.Y1, xs - 1, k.Y2);
+  cv->fillRectangle(xe + 1, k.Y1, k.X2, k.Y2);
+  cv->setBrushColor(T.accent); cv->setPenColor(T.win);        // the NEWS tag, the height of both lines
+  cv->fillRectangle(x0 - 3, k.Y1 + 1, x0 + tw + 2, k.Y2 - 1);
+  cv->drawText(f, x0, k.Y1 + (k.height() - (int)f->height) / 2, tag);
+  cv->setBrushColor(T.win); cv->setPenColor(T.text);
 }
-static void newsTickerStep()
+static void newsTickerStep(Canvas * cv)
 {
-  if (!s_newsCount) return;
-  std::string t = newsTickerText();
-  int n = (int)t.size();
-  if (!n) return;
-  s_tickPos = (s_tickPos + 1) % n;
-  while (s_tickPos < n && (t[s_tickPos] & 0xC0) == 0x80) s_tickPos = (s_tickPos + 1) % n;   // (never half a UTF-8 letter)
+  const fabgl::FontInfo * f = &FONT_std_12;
+  for (int line = 0; line < 2; ++line) {
+    std::string t = newsTickerText(line);
+    int n = (int)t.size();
+    if (!n) continue;
+    Ticker & tk = s_tick[line];
+    if (tk.pos >= n) tk.pos = 0;
+    tk.px += 2;                                               // 2 px every 100 ms: about 20 px a second
+    for (;;) {
+      char c[2] = { t[tk.pos], 0 };
+      int w = cv->textExtent(f, c);
+      if (tk.px < w) break;
+      tk.px -= w; tk.pos = (tk.pos + 1) % n;
+    }
+  }
 }
 
 static void drawDeskPanel(Canvas * cv)

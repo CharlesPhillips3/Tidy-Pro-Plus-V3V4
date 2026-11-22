@@ -12,6 +12,7 @@
 #include <string.h>
 #include <algorithm>
 #include <string>
+#include <vector>
 static inline int imax(int a, int b) { return a > b ? a : b; }
 static inline int imin(int a, int b) { return a < b ? a : b; }
 
@@ -34,7 +35,7 @@ static TaskHandle_t s_task = nullptr;
 
 const char * lastError() { return s_err; }
 bool radioOk() { return s_ok; }
-Mode mode() { return s_mode; }
+Mode mode() { return s_mode == Mode::Mesh ? Mode::Off : s_mode; }   // (the mesh is background: to the RF apps the radio is free)
 
 float powerDensity(float dbm, float gDbi, float fMHz)
 {
@@ -213,18 +214,95 @@ static void doListen()
   }
 }
 
+// ---- 900 MHz Coms mesh (LoRa). The radio is an FSK receiver for the RF apps; for the mesh it's set up for
+// LoRa instead, and set back to FSK when an RF app wants it again.
+static volatile bool s_meshWanted = false;
+static bool s_loRa = false;                                   // the radio is set up for LoRa now
+static void (*s_meshRx)(const uint8_t *, size_t) = nullptr;
+static std::mutex s_meshMx;
+static std::vector<std::vector<uint8_t>> s_meshTx;
+static volatile int s_meshSent = 0, s_meshHeard = 0;
+static const int8_t MESH_CHIP_DBM = 9;                        // + ~11 dB from the V4's front end: about 20 dBm out
+
+void meshEnable(bool on) { s_meshWanted = on; }
+void meshOnReceive(void (*fn)(const uint8_t *, size_t)) { s_meshRx = fn; }
+bool meshListening() { return s_mode == Mode::Mesh; }
+void meshCounts(int & sent, int & heard) { sent = s_meshSent; heard = s_meshHeard; }
+void meshSend(const uint8_t * b, size_t n)
+{
+  if (!s_ok || !s_meshWanted || n == 0 || n > 255) return;
+  std::lock_guard<std::mutex> lk(s_meshMx);
+  if (s_meshTx.size() < 16) s_meshTx.emplace_back(b, b + n);
+}
+
+static bool toLoRa()
+{
+  s_radio->standby();
+  int st = s_radio->begin(915.0, 125.0, 9, 5, RADIOLIB_SX126X_SYNC_WORD_PRIVATE, MESH_CHIP_DBM, 16, 1.8);
+  if (st != RADIOLIB_ERR_NONE) { snprintf(s_err, sizeof(s_err), "Mesh: LoRa didn't start (RadioLib error %d)", st); return false; }
+  s_radio->setDio2AsRfSwitch(true);
+  s_radio->setCRC(2);
+  s_radio->setCurrentLimit(140);
+  s_radio->setRxBoostedGainMode(true);
+  s_loRa = true;
+  return s_radio->startReceive() == RADIOLIB_ERR_NONE;
+}
+static void toFSK()
+{
+  s_radio->standby();
+  s_radio->beginFSK(915.0, 50.0, 25.0, 234.3, 0, 16, 1.8);
+  s_radio->setDio2AsRfSwitch(true);
+  s_radio->setRxBoostedGainMode(true);
+  s_loRa = false;
+}
+static void doMesh()
+{
+  for (int i = 0; i < 10 && s_want == Mode::Off && s_meshWanted; ++i) {
+    if (digitalRead(LORA_DIO1) == HIGH) {                     // a packet (or a bad one) arrived
+      uint8_t b[256];
+      size_t n = s_radio->getPacketLength();
+      if (n > 0 && n <= 255 && s_radio->readData(b, n) == RADIOLIB_ERR_NONE && n >= 3 && b[0] == 'S' && b[1] == '9') {
+        s_meshHeard++;
+        if (s_meshRx) s_meshRx(b, n);
+      }
+      s_radio->startReceive();
+    }
+    std::vector<uint8_t> t;
+    { std::lock_guard<std::mutex> lk(s_meshMx); if (!s_meshTx.empty()) { t.swap(s_meshTx.front()); s_meshTx.erase(s_meshTx.begin()); } }
+    if (!t.empty()) {
+      if (s_radio->scanChannel() == RADIOLIB_LORA_DETECTED) {  // someone's talking: try again shortly
+        std::lock_guard<std::mutex> lk(s_meshMx);
+        s_meshTx.push_back(std::move(t));
+        vTaskDelay(pdMS_TO_TICKS(300 + esp_random() % 600));
+      } else {
+        digitalWrite(FEM_CPS, HIGH); digitalWrite(FEM_CTX, HIGH);   // front end to transmit (V4.2 / V4.3)
+        if (s_radio->transmit(t.data(), t.size()) == RADIOLIB_ERR_NONE) s_meshSent++;
+        digitalWrite(FEM_CPS, LOW); digitalWrite(FEM_CTX, LOW);
+      }
+      s_radio->startReceive();
+    }
+    vTaskDelay(pdMS_TO_TICKS(10));
+  }
+}
+
 static void radioTask(void *)
 {
   for (;;) {
     if (s_reset) { clearStats(); s_reset = false; }
     Mode w = s_want;
+    if (w == Mode::Off && s_meshWanted) w = Mode::Mesh;          // no RF app on the radio: the Coms mesh gets it
     if (w != s_mode) {
       if (w == Mode::Off) { s_radio->standby(); s_radio->sleep(); femReceive(false); }
-      else if (s_mode == Mode::Off) { femReceive(true); s_radio->standby(); }
+      else {
+        if (s_mode == Mode::Off) { femReceive(true); s_radio->standby(); }
+        if (w == Mode::Mesh) { if (!toLoRa()) { s_meshWanted = false; w = Mode::Off; s_radio->standby(); s_radio->sleep(); femReceive(false); } }
+        else if (s_loRa) toFSK();                                  // back to the RF apps' receiver
+      }
       s_mode = w;
     }
     if (s_mode == Mode::Sweep) doSweep();
     else if (s_mode == Mode::Listen) doListen();
+    else if (s_mode == Mode::Mesh) doMesh();
     else vTaskDelay(pdMS_TO_TICKS(100));
   }
 }
@@ -261,6 +339,7 @@ bool begin()
 
 void powerDown()
 {
+  s_meshWanted = false;
   s_want = Mode::Off;
   for (int i = 0; i < 40 && s_mode != Mode::Off; ++i) delay(10);
   if (s_radio && s_ok) { s_radio->standby(); s_radio->sleep(); }
@@ -446,6 +525,11 @@ void saveSettings() {}
 float powerDensity(float, float, float) { return 0; }
 bool gnssStart() { return false; }
 bool gnssFixed() { return false; }
+void meshEnable(bool) {}
+void meshOnReceive(void (*)(const uint8_t *, size_t)) {}
+void meshSend(const uint8_t *, size_t) {}
+bool meshListening() { return false; }
+void meshCounts(int & s, int & h) { s = h = 0; }
 }
 bool gnssPresent() { return false; }
 #endif
