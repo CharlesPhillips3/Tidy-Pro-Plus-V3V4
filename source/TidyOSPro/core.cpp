@@ -722,6 +722,16 @@ static std::string s_bootNote;              // shown once on the desktop (update
 #include "rf_engine.h"
 void oledBegin();   // oled.cpp
 #include "desk_panel.h"
+#ifdef TIDYOS_PRO
+// a window (other than the desktop itself) is over the news line
+static bool tickerCovered()
+{
+  Rect k = newsTickerRect();
+  for (uiWindow * w = gApp->rootWindow()->firstChild(); w; w = w->next())
+    if (w != s_deskCtl && w->state().visible && w->rect(uiOrigin::Screen).intersects(k)) return true;
+  return false;
+}
+#endif
 
 class Desktop : public uiControl {
 public:
@@ -836,7 +846,9 @@ public:
           if (ns != m_lastSec) { m_lastSec = ns; repaint(Rect(imax(0, s_clockX - 4), SCREEN_H - BAR_H, SCREEN_W - 1, SCREEN_H - 1)); }   // the seconds tick every second
         }
 #ifdef TIDYOS_PRO
-        if (s_newsCount && !showingHint()) { newsTickerStep(canvas()); repaint(newsTickerRect()); }   // rolling headlines, every 100 ms
+        if (s_newsCount && !showingHint() && !tickerCovered()) { newsTickerStep(canvas()); repaint(newsTickerRect()); }   // rolling headlines, every 100 ms
+        // (not while a window is over it: drawing it unseen 10 times a second took drawing time and browser
+        // bandwidth from the window in front, a game most of all)
 #endif
         if (++m_tick % 10) break;                   // the rest once a second (timer: 100 ms)
         netTick();

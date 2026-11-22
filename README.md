@@ -26,7 +26,17 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.9. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.10. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.10: smoother games, music starts first time
+- **Smoother games in the browser**: the board now sends only the changed stretch of each screen row (it keeps a
+  copy of what the browser has), not whole rows. A game's moving pieces are a few dozen pixels wide, so a frame
+  is a fraction of the data it was, and StuntCopter and the other fast games keep up instead of jerking along.
+- **The news line stops while a window covers it**, so it doesn't take drawing time and Wi-Fi from the game.
+- **MP3 / MIDI in a game play on the first tap**: the music file server is listening before the browser is told
+  to fetch the song (it wasn't yet, so nothing played until Next).
+- **Crash reports survive the boot menu**: after a crash a dual-boot board starts TidyOS through the boot menu,
+  which hid the "last run crashed" report. It's shown (serial console, Task Manager, crash.txt) again.
 
 ### 3.4.9: the map's white box, properly gone
 - 3.4.8 stopped the panel blanking the map, but the desktop underneath still painted its own colour over the

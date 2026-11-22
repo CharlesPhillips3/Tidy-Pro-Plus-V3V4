@@ -42,7 +42,8 @@ static DNSServer     s_dns;
 static volatile bool s_ap = false;
 static WiFiClient    s_ws;
 static volatile bool s_view = false;
-static uint32_t      s_hash[SCREEN_H];
+static uint8_t *     s_prev = nullptr;   // what the browser has, row by row (PSRAM): only the changed part of a row is sent
+static bool          s_rowOk[SCREEN_H];  // false = the browser has nothing for this row yet
 static uint32_t      s_apSince = 0, s_connSince = 0;
 static char          s_sentHome[80];      // last "home Wi-Fi" address sent to this browser
 static char          s_mediaQ[4][300];    // media commands waiting for the page (small ring)
@@ -101,6 +102,12 @@ function connect(){
     if(bpp==1){for(var x=0;x<80;x++){var b=d[o+x];for(var i=7;i>=0;i--)px[p++]=pal[b>>i&1];}}
     else if(bpp==2){for(var x=0;x<160;x++){var b=d[o+x];px[p++]=pal[b>>6];px[p++]=pal[b>>4&3];px[p++]=pal[b>>2&3];px[p++]=pal[b&3];}}
     else{for(var k=0;k<80;k++){var q=o+k*3,v=d[q]|d[q+1]<<8|d[q+2]<<16;for(var i=0;i<8;i++)px[p++]=pal[v>>(21-3*i)&7];}}}
+   dirty=true;}
+  else if(d[0]==3){var cnt=d[1]|d[2]<<8,o=3;
+   for(var sg=0;sg<cnt;sg++){var y=d[o]|d[o+1]<<8,a=d[o+2],len=d[o+3];o+=4;var oe=o+len;
+    if(bpp==1){var p=y*640+a*8;for(;o<oe;o++){var b=d[o];for(var i=7;i>=0;i--)px[p++]=pal[b>>i&1];}}
+    else if(bpp==2){var p=y*640+a*4;for(;o<oe;o++){var b=d[o];px[p++]=pal[b>>6];px[p++]=pal[b>>4&3];px[p++]=pal[b>>2&3];px[p++]=pal[b&3];}}
+    else{var p=y*640+a/3*8;for(;o<oe;o+=3){var v=d[o]|d[o+1]<<8|d[o+2]<<16;for(var i=0;i<8;i++)px[p++]=pal[v>>(21-3*i)&7];}}}
    dirty=true;}
   else if(d[0]==8){var t=new TextDecoder().decode(d.subarray(1)).split('\n');ver=t[0];upBase=parseInt(t[1])||0;upAt=Date.now();}
   else if(d[0]==9)media(new TextDecoder().decode(d.subarray(1)));
@@ -629,49 +636,63 @@ static inline uint32_t rowHash(const uint8_t * row, int bytes)
   return h | 1;      // never 0, so 0 can mean "not sent yet"
 }
 
-// puts the next run of changed rows (up to 10-16) into the outbox; returns its size, 0 = nothing changed.
-// The search goes on from where the last run ended and wraps round, so every changed row gets its turn. (It used
-// to start at the top each time: with a game changing ~100 rows a frame, the rows near the top changed again before
-// the search got further down, so lower rows could wait for ages and the browser kept old bits of the picture.)
+// puts the changed parts of rows into the outbox, as many as fit; returns its size, 0 = nothing changed.
+// Each row is compared with what the browser already has (s_prev), and only the stretch from the first to the
+// last changed byte is sent: a game's copter is ~40 pixels wide, so that's ~10 bytes of a 160-byte row. (Whole
+// rows used to go: ~100 of them every frame in a fast game, more than Wi-Fi could carry, so games looked jerky.)
+// The search goes on from where the last batch ended and wraps round, so every changed row gets its turn.
+// Message 3: [3][count lo][count hi] then per piece [y lo][y hi][first byte][length][bytes].
 static int s_scanY = 0;
 static size_t queueChanges()
 {
   if (outPending()) return 0;
   const int rb = gColors == 8 ? 240 : gColors == 2 ? 80 : 160;
-  const int maxRows = (int)((sizeof(s_ob) - 8) / rb);
+  if (!s_prev) {
+    s_prev = (uint8_t *)heap_caps_malloc(SCREEN_H * 240, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
+    if (!s_prev) s_prev = (uint8_t *)malloc(SCREEN_H * 240);
+    if (!s_prev) return 0;
+    memset(s_rowOk, 0, sizeof(s_rowOk));
+  }
+  const size_t cap = sizeof(s_ob) - 4;
+  uint8_t * pay = s_ob + 4;
+  size_t pl = 3; int cnt = 0, lastY = -1;
+  static uint8_t tmp[240];
   for (int k = 0; k < SCREEN_H; ++k) {
     int y = (s_scanY + k) % SCREEN_H;
-    const uint8_t * row = (const uint8_t *)fabgl::VGAPalettedController::sgetScanline(y);
-    if (rowHash(row, rb) == s_hash[y]) continue;
-    int y0 = y, n = 0;
-    uint8_t * out = s_ob + 8;
-    while (y < SCREEN_H && n < maxRows) {         // a run doesn't wrap: it stops at the bottom row
-      const uint8_t * r = (const uint8_t *)fabgl::VGAPalettedController::sgetScanline(y);
-      // copy first, then remember the hash of the copy: the other core may be drawing into this row
-      // right now, and the browser must be known to have exactly what was sent (hashing the live row
-      // and copying it a moment later could leave a half-drawn row on the page for good)
-      memcpy(out + n * rb, r, rb);
-      uint32_t hh = rowHash(out + n * rb, rb);
-      if (hh == s_hash[y]) break;
-      s_hash[y] = hh;
-      ++n; ++y;
+    const uint8_t * live = (const uint8_t *)fabgl::VGAPalettedController::sgetScanline(y);
+    uint8_t * prev = s_prev + y * 240;
+    if (s_rowOk[y] && !memcmp(live, prev, rb)) continue;
+    // copy first, then compare the copy: the other core may be drawing into this row right now, and the
+    // browser must be known to have exactly what was sent
+    memcpy(tmp, live, rb);
+    int a = 0, b = rb - 1;
+    if (s_rowOk[y]) {
+      while (a < rb && tmp[a] == prev[a]) ++a;
+      if (a == rb) continue;                       // (it changed back while being copied)
+      while (b > a && tmp[b] == prev[b]) --b;
+      if (gColors == 8) { a = a / 3 * 3; b = b / 3 * 3 + 2; }   // 8 colours: 3 bytes hold 8 pixels
     }
-    if (!n) continue;                             // (it changed back while being copied)
-    s_scanY = y % SCREEN_H;                       // next time, carry on from here
-    size_t len = 4 + (size_t)n * rb;
-    s_ob[4] = 2; s_ob[5] = y0 & 255; s_ob[6] = y0 >> 8; s_ob[7] = n;
-    if (len >= 126) {                                // WebSocket: 2-byte length form
-      s_ob[0] = 0x82; s_ob[1] = 126; s_ob[2] = len >> 8; s_ob[3] = len & 255;
-      s_obPos = 0;
-    } else {                                         // short frame (one black-and-white row): the
-      s_ob[2] = 0x82; s_ob[3] = len;                 // short length form is required, or browsers drop us
-      s_obPos = 2;
-    }
-    s_obLen = 4 + len;
-    gNetTx += s_obLen;
-    return s_obLen;
+    int len = b - a + 1;
+    if (pl + 4 + len > cap) break;                 // full: the rest next time
+    pay[pl++] = y & 255; pay[pl++] = y >> 8; pay[pl++] = (uint8_t)a; pay[pl++] = (uint8_t)len;
+    memcpy(pay + pl, tmp + a, len); pl += len;
+    memcpy(prev + a, tmp + a, len);
+    s_rowOk[y] = true;
+    ++cnt; lastY = y;
   }
-  return 0;
+  if (!cnt) return 0;
+  s_scanY = (lastY + 1) % SCREEN_H;                // next time, carry on from here
+  pay[0] = 3; pay[1] = cnt & 255; pay[2] = cnt >> 8;
+  if (pl >= 126) {                                 // WebSocket: 2-byte length form
+    s_ob[0] = 0x82; s_ob[1] = 126; s_ob[2] = pl >> 8; s_ob[3] = pl & 255;
+    s_obPos = 0;
+  } else {                                         // a small one: the short length form is required,
+    s_ob[2] = 0x82; s_ob[3] = pl;                  // or browsers drop us
+    s_obPos = 2;
+  }
+  s_obLen = 4 + pl;
+  gNetTx += s_obLen - s_obPos;
+  return s_obLen;
 }
 
 // browser -> TidyOS
@@ -765,7 +786,7 @@ static void handleHttp(WiFiClient c, const std::string & req)
     c.write((const uint8_t *)resp.data(), resp.size());
     c.setNoDelay(true);
     s_ws = c;
-    memset(s_hash, 0, sizeof(s_hash)); s_scanY = 0;
+    memset(s_rowOk, 0, sizeof(s_rowOk)); s_scanY = 0;
     s_obLen = s_obPos = 0; s_outStuck = 0;
     sendPalette(s_ws);
     {   // version + uptime for the page's top bar (the page keeps counting from here)

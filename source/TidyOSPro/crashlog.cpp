@@ -59,7 +59,9 @@ void crashBegin()
 {
   esp_reset_reason_t rr = esp_reset_reason();
   bool crashed = rr == ESP_RST_PANIC || rr == ESP_RST_INT_WDT || rr == ESP_RST_TASK_WDT || rr == ESP_RST_WDT;
-  if (crashed && s_rec.magic == CRASH_MAGIC) {
+  // (the dual-boot board restarts through the boot menu after a crash, so TidyOS then starts with a software
+  // reset, not a panic one: the record itself, set only by the panic handler and cleared every start, says it)
+  if ((crashed || rr == ESP_RST_SW) && s_rec.magic == CRASH_MAGIC) {
     char b[160];
     s_rec.reason[47] = 0;
     snprintf(b, sizeof(b), "%s on core %d after %um %02us (free RAM %uK, lowest %uK)", s_rec.reason, (int)s_rec.core,

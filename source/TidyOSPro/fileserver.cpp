@@ -384,6 +384,12 @@ void fileServerMedia(bool on)
 }
 
 int fileServerPort() { return FILES_PORT; }
+// starts it (if needed) and waits up to 1.5 s until it's listening, so the browser's first request finds it
+void fileServerMediaReady()
+{
+  fileServerMedia(true);
+  for (int i = 0; i < 75 && !s_listening && WiFi.status() == WL_CONNECTED; ++i) delay(20);
+}
 
 std::string fileServerMediaPath(const std::string & file)
 {

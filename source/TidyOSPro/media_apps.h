@@ -407,7 +407,7 @@ public:
 
   void play(const std::string & p) {
     if (WiFi.status() != WL_CONNECTED) { gApp->messageBox("Music", "Music plays over your home Wi-Fi - join it in Settings.", "OK", nullptr, nullptr, uiMessageBoxIcon::Info); return; }
-    fileServerMedia(true);
+    fileServerMediaReady();
     playing = p; paused = false;
     lastState = 2;           // ignore "ended" until the browser has started this song (its last report may be the old song's)
     char v[24]; snprintf(v, sizeof(v), "v %.2f", vol);
@@ -502,7 +502,7 @@ static int  s_qLast = 2;
 static float s_qVol = 0.8f;
 static void quickPlayFile(const std::string & p)
 {
-  fileServerMedia(true);
+  fileServerMediaReady();          // (the first song used to be asked for before the server was listening: no music until Next)
   s_qPlaying = p; s_qPaused = false; s_qLast = 2;
   char v[24]; snprintf(v, sizeof(v), "v %.2f", s_qVol);
   screenMedia(v);
