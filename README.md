@@ -26,7 +26,12 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.8. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.9. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.9: the map's white box, properly gone
+- 3.4.8 stopped the panel blanking the map, but the desktop underneath still painted its own colour over the
+  panel's area first on every 20 s redraw, so the map could still flash as a plain box. The desktop now paints
+  around the panel and leaves its area to the panel.
 
 ### 3.4.8: no more glitch lines in the map
 - The desktop panel redraws itself every 20 s. It used to blank the whole panel first, so the world map was empty

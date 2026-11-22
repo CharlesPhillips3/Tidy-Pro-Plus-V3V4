@@ -996,7 +996,19 @@ private:
       if (!showingHint() && clip.X1 >= k.X1 && clip.X2 <= k.X2 && clip.Y1 >= k.Y1 && clip.Y2 <= k.Y2) { drawNewsTicker(cv); return; } }
 #endif
     cv->setBrushColor(T.desk);
-    cv->fillRectangle(clip.X1, clip.Y1, clip.X2, imin(clip.Y2, SCREEN_H - BAR_H - 1));
+    {
+      // the desktop colour everywhere in the clip except under the panel: the panel paints all of its own area,
+      // and filling it first left the map a plain box for a moment, which the browser could catch (every 20 s)
+      Rect f(clip.X1, clip.Y1, clip.X2, imin(clip.Y2, SCREEN_H - BAR_H - 1)), p = deskPanelRect();
+      if (showingHint() || !f.intersects(p)) cv->fillRectangle(f.X1, f.Y1, f.X2, f.Y2);
+      else {
+        if (f.Y1 < p.Y1) cv->fillRectangle(f.X1, f.Y1, f.X2, p.Y1 - 1);                    // above
+        if (f.Y2 > p.Y2) cv->fillRectangle(f.X1, p.Y2 + 1, f.X2, f.Y2);                    // below
+        int y1 = imax(f.Y1, p.Y1), y2 = imin(f.Y2, p.Y2);
+        if (f.X1 < p.X1) cv->fillRectangle(f.X1, y1, p.X1 - 1, y2);                         // left
+        if (f.X2 > p.X2) cv->fillRectangle(p.X2 + 1, y1, f.X2, y2);                         // right
+      }
+    }
     for (int i = 0; i < NICONS; ++i) {
       Rect r = iconRect(i);
       if (r.X2 >= clip.X1 && r.X1 <= clip.X2 && r.Y2 >= clip.Y1 && r.Y1 <= clip.Y2)
