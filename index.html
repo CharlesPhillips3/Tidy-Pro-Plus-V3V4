@@ -131,6 +131,7 @@ details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var
       <h1>Tidy<span class="pro">PRO+</span></h1>
       <p class="ver-pill" id="verPill" hidden></p>
       <p class="lead"><b>Tidy Pro Plus</b> is TidyOS Pro with a flasher where you tick exactly what goes on the board and see the free space as you go. A pocket field computer on a Heltec V4: a 902–928 MHz spectrum sweep, AMI meter traffic counter, GPS site survey and an RF exposure estimate, plus the TidyOS desktop in any browser. It can share the board with The Shelf (dual boot).</p>
+      <p style="margin-top:18px"><a class="btn alt" href="#usbfiles">&#127925; Copy music &amp; files to the board</a></p>
     </div>
   </header>
 
@@ -261,7 +262,26 @@ details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var
       <button class="btn" id="shZip" style="margin-top:10px">Download selected (.zip)</button>
       <span class="muted" style="margin-left:8px">The zip has Music and Pictures folders, ready to copy onto an SD card.</span>
     </div>
-    <p class="muted" style="margin-top:10px">Then copy the Music and Pictures folders onto the board's SD card, or drop the files onto the TidyOS Pro desktop in your browser: songs go to the Music folder and photos to Pictures (on the SD card, or the board's own storage without one), and the Music app plays them from there. Easier still: drop your MP3s and photos straight onto the desktop, and TidyOS Pro shrinks them the same way as they go in (hold Alt while dropping to send them as they are).</p>
+    <p class="muted" style="margin-top:10px">Then copy the Music and Pictures folders onto the board's SD card, or drop the files onto the TidyOS Pro desktop in your browser: songs go to the Music folder and photos to Pictures (on the SD card, or the board's own storage without one), and the Music app plays them from there. Or send them over the USB cable with <a href="#usbfiles"><b>Copy music, pictures and files</b></a> just below. Easier still: drop your MP3s and photos straight onto the desktop, and TidyOS Pro shrinks them the same way as they go in (hold Alt while dropping to send them as they are).</p>
+  </div>
+
+  <h2 id="usbfiles">Copy music, pictures and files to the board</h2>
+  <p>Put music, pictures and other files on the board with just the USB cable: no Wi-Fi or card reader needed. Plug the board in with TidyOS Pro running (3.4.5 or newer), click <b>Connect</b> and pick its port, then pick the SD card or the board's own storage, open a folder and drop files in. <b>Music</b> jumps to the folder the Music app plays from. Songs shrunk above (Opus) fit about three times as many. It goes at roughly 50&ndash;150 KB a second, so a shrunk song takes 10&ndash;30 seconds. This shares the USB port with the serial console at the bottom of the page.</p>
+  <div class="card">
+    <div class="con-bar">
+      <button class="btn" id="fmGo">Connect</button>
+      <select id="fmRoot" disabled></select>
+      <button class="chip" id="fmUp" disabled>&uarr; Up</button>
+      <button class="chip" id="fmMusic" disabled>&#127925; Music</button>
+      <button class="chip" id="fmPics" disabled>&#128247; Pictures</button>
+      <button class="chip" id="fmNew" disabled>New folder</button>
+      <label class="chip" id="fmAddL" style="cursor:pointer">Add files&hellip;<input type="file" id="fmPick" multiple hidden></label>
+      <span class="muted" id="fmFree"></span>
+    </div>
+    <div class="muted" id="fmPath" style="margin:8px 0 6px">Not connected</div>
+    <div class="drop" id="fmDrop">Drop files here to copy them into this folder</div>
+    <table class="mt sh" id="fmList"></table>
+    <div class="fb-status" id="fmStatus" hidden><div class="fb-bar"><div id="fmFill"></div></div><div id="fmMsg"></div></div>
   </div>
 
   <h2>3. Wire it up</h2>
@@ -320,25 +340,6 @@ PRG: switch  hold: go  4s</div>
 
   <h2>Updates</h2>
   <p>TidyOS Pro: Settings &rarr; <b>Check for updates</b>. With a microSD card in, the update is saved on the card; <b>without one, it's saved in the board's own storage</b> (The Shelf's 7.4 MB area, which needs about 3 MB free). Then the boot menu installs it and starts the new TidyOS Pro. Boards installed before 3.1.2 need one install from this page first (tick TidyOS Pro and Boot menu) to get the new boot menu. The Shelf on a dual-boot board updates from its own settings page as usual.</p>
-
-  <h2 id="usbfiles">Copy files over USB</h2>
-  <p>Put music, pictures and other files on the board with just the USB cable: no Wi-Fi or card reader needed. Plug the board in with TidyOS Pro running (3.4.5 or newer), click <b>Connect</b> and pick its port, then pick the SD card or the board's own storage, open a folder and drop files in. <b>Music</b> jumps to the folder the Music app plays from. Songs shrunk above (Opus) fit about three times as many. It goes at roughly 50&ndash;150 KB a second, so a shrunk song takes 10&ndash;30 seconds. This shares the port with the serial console below.</p>
-  <div class="card">
-    <div class="con-bar">
-      <button class="btn" id="fmGo">Connect</button>
-      <select id="fmRoot" disabled></select>
-      <button class="chip" id="fmUp" disabled>&uarr; Up</button>
-      <button class="chip" id="fmMusic" disabled>&#127925; Music</button>
-      <button class="chip" id="fmPics" disabled>&#128247; Pictures</button>
-      <button class="chip" id="fmNew" disabled>New folder</button>
-      <label class="chip" id="fmAddL" style="cursor:pointer">Add files&hellip;<input type="file" id="fmPick" multiple hidden></label>
-      <span class="muted" id="fmFree"></span>
-    </div>
-    <div class="muted" id="fmPath" style="margin:8px 0 6px">Not connected</div>
-    <div class="drop" id="fmDrop">Drop files here to copy them into this folder</div>
-    <table class="mt sh" id="fmList"></table>
-    <div class="fb-status" id="fmStatus" hidden><div class="fb-bar"><div id="fmFill"></div></div><div id="fmMsg"></div></div>
-  </div>
 
   <h2>Serial console</h2>
   <p>See what the board says over USB (115200 baud): start-up messages, the <i>stack headroom</i> table, and crash reports. Plug the board in, click <b>Connect</b> and pick its port. The flasher's buttons above close the console by themselves when they need the port.</p>
