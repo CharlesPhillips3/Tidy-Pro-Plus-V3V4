@@ -26,7 +26,13 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.7. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.8. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.8: no more glitch lines in the map
+- The desktop panel redraws itself every 20 s. It used to blank the whole panel first, so the world map was empty
+  for a moment while it was drawn again, and the browser could catch a line of it half-done (more likely with
+  the news line moving all the time). The map is now drawn over in place, never blanked.
+- The news line never draws past the panel's right edge.
 
 ### 3.4.7: music fixes
 - **Music in a game goes on to the next song** for Opus and MP3 too. With the Music window closed, the games'

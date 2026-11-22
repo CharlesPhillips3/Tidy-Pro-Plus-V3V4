@@ -593,7 +593,7 @@ static void drawNewsTicker(Canvas * cv)
     std::string vis;                                          // from the left-edge letter on, wrapping round, until past the right edge
     for (int i = 0; i < n * 2 && (int)vis.size() < 200; ++i) {
       vis += t[(tk.pos + i) % n];
-      if (xs - tk.px + cv->textExtent(f, vis.c_str()) > xe + 12) break;
+      if (xs - tk.px + cv->textExtent(f, vis.c_str()) > k.X2) { vis.pop_back(); break; }   // (never past the panel's edge)
     }
     cv->setPenColor(T.text); cv->setBrushColor(T.win);
     cv->drawText(f, xs - tk.px, y, vis.c_str());
@@ -629,7 +629,10 @@ static void drawDeskPanel(Canvas * cv)
 {
   Rect r = deskPanelRect();
   cv->setBrushColor(T.win);
-  cv->fillRectangle(r.X1, r.Y1, r.X2, r.Y2);
+  // everything but the map: the map paints every one of its own pixels, so it's drawn over in place. (Blanking it
+  // first left it empty for a moment while it was redrawn, and the browser could catch a line of it like that.)
+  cv->fillRectangle(r.X1, r.Y1, r.X2, r.Y2 - 126);
+  cv->fillRectangle(r.X1, r.Y2 - 3, r.X2, r.Y2);
   cv->setPenColor(T.text);
   cv->drawRectangle(r.X1, r.Y1, r.X2, r.Y2);
   int x = r.X1 + 10, y = r.Y1 + 6;
@@ -637,6 +640,7 @@ static void drawDeskPanel(Canvas * cv)
   time_t now = time(nullptr);
   cv->setPenColor(T.text); cv->setBrushColor(T.win);
   if (now < 1600000000) {
+    cv->fillRectangle(r.X1 + 1, r.Y2 - 126, r.X2 - 1, r.Y2 - 3);    // (no map yet)
     cv->drawText(&FONT_std_16, x, y + 6, "Waiting for the clock...");
     return;
   }
