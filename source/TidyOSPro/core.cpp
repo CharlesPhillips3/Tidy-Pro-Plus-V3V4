@@ -973,13 +973,12 @@ private:
     if (!notice.empty()) snprintf(b, sizeof(b), "%s", notice.substr(0, 40).c_str());
 #ifdef TIDYOS_HTML5
     else {                                                                    // (you're looking at it in the browser)
-      static char cache[96] = ""; static uint32_t cacheAt = 0;               // the figures change every 20 s, not every second
-      if (cache[0] && millis() - cacheAt < 20000) return cache;
-      cacheAt = millis();
-      size_t ps = heap_caps_get_free_size(MALLOC_CAP_SPIRAM), in = heap_caps_get_free_size(MALLOC_CAP_INTERNAL);
-      // free storage: the SD card when it's on, otherwise TidyOS's own flash area (looked up every 10 s)
+      // RAM figures every 20 s (they jump about); free storage every 5 s (the bar is redrawn every 5 s)
+      static size_t ps = 0, in = 0; static uint32_t ramAt = 0;
+      if (!ramAt || millis() - ramAt >= 20000) { ramAt = millis() | 1; ps = heap_caps_get_free_size(MALLOC_CAP_SPIRAM); in = heap_caps_get_free_size(MALLOC_CAP_INTERNAL); }
+      // free storage: the SD card when it's on, otherwise TidyOS's own flash area
       static char st[28] = ""; static uint32_t stAt = 0;
-      if (!st[0] || millis() - stAt > 10000) {
+      if (!st[0] || millis() - stAt >= 4900) {
         stAt = millis();
         int64_t fb = 0; bool onSd = false;
         auto human = [](int64_t n, char * o, size_t m) {
@@ -992,8 +991,7 @@ private:
         else st[0] = 0;
       }
       if (heap_caps_get_total_size(MALLOC_CAP_SPIRAM)) snprintf(b, sizeof(b), "RAM %uK + PSRAM %u.%uM%s free", (unsigned)(in / 1024), (unsigned)(ps / 1048576), (unsigned)(ps % 1048576 * 10 / 1048576), st);
-      else snprintf(b, sizeof(b), "RAM %uK%s free", (unsigned)(ramFree() / 1024), st);
-      strlcpy(cache, b, sizeof(cache));
+      else snprintf(b, sizeof(b), "RAM %uK%s free", (unsigned)(in / 1024), st);
     }
 #else
     else snprintf(b, sizeof(b), "Keyboard: %s  Mouse: %s   RAM %uK", inputKeyboards() ? "on" : "--", inputMice() ? "on" : "--", (unsigned)(ramFree() / 1024));

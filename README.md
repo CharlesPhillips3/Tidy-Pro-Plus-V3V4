@@ -26,7 +26,10 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.11. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.12. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.12: free space every 5 seconds
+- The taskbar's free flash / SD space is looked up every 5 s (it was every 20 s); the RAM figures stay at every 20 s.
 
 ### 3.4.11: game music, take two
 - MP3 / MIDI in a game go by what the browser says is playing, not what the board remembers: after the page was

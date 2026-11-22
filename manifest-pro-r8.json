@@ -1,10 +1,10 @@
 {
   "name": "TidyOS Pro for Heltec V4-R8",
-  "version": "3.4.11",
+  "version": "3.4.12",
   "tidyos": {
-    "version": "3.4.11",
+    "version": "3.4.12",
     "app": "firmware/tidyos-pro-v4-r8-full.bin",
-    "size": 3062880,
-    "sha256": "3f5bff3e61932f286611edafe02dc90fe10484d1f08098ce59ab58e910034c13"
+    "size": 3062864,
+    "sha256": "82885f56af77bdd224ab726d8e0b9a51fd0f073c77fbf6f2c6b0d1e44e3dd0e6"
   }
 }
