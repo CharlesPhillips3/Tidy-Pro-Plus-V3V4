@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Tidy Pro Plus: split the full images into one file per piece, for the pick-what-you-install flasher.
 
+  firmware/pro-<b>-boot-tidyonly.bin  bootloader + the TidyOS-Pro-only partition table (more file room)
   firmware/parts/<b>/menu.bin    boot menu (TidyBoot)          -> 0x10000
   firmware/parts/<b>/shelf.bin   The Shelf (dual-boot build)   -> 0x380000
   firmware/parts/<b>/www.bin     The Shelf's web app           -> 0x580000
@@ -25,6 +26,12 @@ for b in ('v4', 'v4-r8'):
     d = open(dual, 'rb').read()
     pd = os.path.join(fw, 'parts', b); os.makedirs(pd, exist_ok=True)
     info = {'boot': {'path': f'firmware/pro-{b}-boot.bin', 'offset': 0, 'size': os.path.getsize(os.path.join(fw, f'pro-{b}-boot.bin'))}}
+    # the same bootloader with the TidyOS-Pro-only table (partitions-tidyonly.csv): The Shelf's space becomes file room
+    import sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import ptable
+    tbl = ptable.build(ptable.parse(os.path.join(root, 'source/TidyOSPro/partitions-tidyonly.csv')))
+    bt = bytearray(open(os.path.join(fw, f'pro-{b}-boot.bin'), 'rb').read()); bt[0x8000:0x8000 + len(tbl)] = tbl
+    open(os.path.join(fw, f'pro-{b}-boot-tidyonly.bin'), 'wb').write(bt)
+    info['bootTidyOnly'] = {'path': f'firmware/pro-{b}-boot-tidyonly.bin', 'offset': 0, 'size': len(bt)}
     for name, (a, e) in SLOTS.items():
         img = d[a - BASE:e - BASE]
         img = img if name == 'www' else trim(img)

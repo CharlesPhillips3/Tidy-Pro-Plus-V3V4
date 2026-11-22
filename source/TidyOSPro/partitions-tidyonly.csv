@@ -1,0 +1,11 @@
+# TidyOS Pro (Heltec V4, 16 MB): TidyOS Pro only, no The Shelf.
+# The Shelf's program slot (2 MB), its web app (2 MB) and the old 1 MB file area go to the file storage:
+# about 12.4 MB for files instead of 7.4 MB. Same names as the dual-boot table, so the same TidyOS Pro and
+# boot menu work with either. The web flasher writes this when "Give The Shelf's space to my files" is ticked.
+# Name,   Type, SubType,  Offset,   Size
+nvs,      data, nvs,      0x9000,   0x5000
+otadata,  data, ota,      0xe000,   0x2000
+menu,     app,  factory,  0x10000,  0x70000
+tidyos,   app,  ota_0,    0x80000,  0x300000
+ffat,     data, fat,      0x380000, 0xC70000
+coredump, data, coredump, 0xFF0000, 0x10000

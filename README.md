@@ -28,6 +28,16 @@ The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (mad
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
 Version 3.4.5. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
 
+### Flasher: TidyOS Pro only with 12.4 MB for files
+- New tick box under the systems, shown when The Shelf is unticked: **Give The Shelf's space to my files**. It
+  installs a TidyOS-Pro-only partition table (`source/TidyOSPro/partitions-tidyonly.csv`): The Shelf's program
+  slot, its web app and the old 1 MB area become one **12.4 MB** file area instead of 7.4 MB. The quick pick
+  "TidyOS Pro only" ticks it. Same names in the table, so the same TidyOS Pro and boot menu run on either layout.
+- Before writing, the flasher reads the board's partition table. Changing layout wipes the files kept on the
+  board (never the microSD card); installing again on the same layout keeps them. Going back to dual boot needs
+  the bootloader + partition table ticked, and wipes the board's files once.
+- `tools/parts.py` makes `firmware/pro-<board>-boot-tidyonly.bin` (bootloader + that table) with `tools/ptable.py`.
+
 ### 3.4.5: copy files over USB, a real update bar, ticking seconds
 - **Copy files over USB** (the flasher page): connect with the USB cable, pick the SD card or the board's own
   storage, open a folder (Music and Pictures are one click) and drop files in; Save and Delete what's there. Works
@@ -272,6 +282,15 @@ The flash is split so both systems fit (16 MB):
 0x580000  www       2 MB  The Shelf's web app
 0x780000  tidyfs    1 MB  TidyOS Pro's internal storage (when there's no card)
 0x880000  ffat    7.4 MB  The Shelf's internal storage
+```
+
+TidyOS Pro on its own can use a second layout (`partitions-tidyonly.csv`, picked in the flasher with
+*Give The Shelf's space to my files*):
+
+```
+0x010000  menu    448 KB  TidyBoot
+0x080000  tidyos    3 MB  TidyOS Pro
+0x380000  ffat   12.4 MB  the board's file storage (all TidyOS Pro's)
 ```
 
 Every start goes through **TidyBoot**. It shows *Start which one?* on the OLED for 5 seconds: a short press of PRG

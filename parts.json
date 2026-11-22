@@ -7,6 +7,11 @@
         "offset": 0,
         "size": 36864
       },
+      "bootTidyOnly": {
+        "path": "firmware/pro-v4-boot-tidyonly.bin",
+        "offset": 0,
+        "size": 36864
+      },
       "menu": {
         "path": "firmware/parts/v4/menu.bin",
         "offset": 65536,
@@ -43,6 +48,11 @@
     "v4-r8": {
       "boot": {
         "path": "firmware/pro-v4-r8-boot.bin",
+        "offset": 0,
+        "size": 36864
+      },
+      "bootTidyOnly": {
+        "path": "firmware/pro-v4-r8-boot-tidyonly.bin",
         "offset": 0,
         "size": 36864
       },
