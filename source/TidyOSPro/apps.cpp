@@ -135,6 +135,23 @@ public:
   }
   void setDir(const std::string & d) { dir = d; top = 0; sel = -1; count = countAll(); repaint(); }
   void scroll(int by) { int t = imax(0, imin(count - rows(), top + by)); if (t != top) { top = t; repaint(); } }
+  // highlight the entry with this name (e.g. the song now playing) and scroll it into view; "" or not here = none
+  void selectName(const std::string & nm) {
+    int i = hasUp() ? 1 : 0, found = -1;
+    if (!nm.empty()) {
+      DIR * d = opendir(dir.c_str());
+      if (d) {
+        struct dirent * e;
+        while ((e = readdir(d)) != nullptr) { if (e->d_name[0] == '.') continue; if (nm == e->d_name) { found = i; break; } ++i; }
+        closedir(d);
+      }
+    }
+    if (found == sel) return;
+    sel = found;
+    if (sel >= 0 && sel < top) top = sel;
+    if (sel >= 0 && sel >= top + rows()) top = sel - rows() + 1;
+    repaint();
+  }
 
   void processEvent(uiEvent * e) override {
     uiControl::processEvent(e);

@@ -415,6 +415,7 @@ public:
     screenMedia((isMidiFile(p.c_str()) ? "m " : "a ") + fileServerMediaPath(p));
     now->setText(("Playing: " + baseName(p)).c_str()); now->repaint();
     playBtn->setText("Pause"); playBtn->repaint();
+    list->selectName(dirOf(p) == list->dir ? baseName(p) : std::string());   // the list follows Next / Prev / the next song
   }
   void playPause() {
     if (playing.empty()) {          // nothing yet: play the first song in the folder
@@ -584,7 +585,7 @@ void musicQuickTick()             // once a second: on to the next song when one
   if (MusicApp::inst || s_qPlaying.empty() || s_qPaused) return;
   int st, pos, dur;
   screenMediaState(st, pos, dur);
-  if (st == 2 && s_qLast != 2) { std::string n = randomSong(dirOf(s_qPlaying), baseName(s_qPlaying), true); if (!n.empty()) quickPlayFile(n); return; }
+  if (st == 2 && s_qLast != 2) { std::string n = randomSong(dirOf(s_qPlaying), baseName(s_qPlaying), isMidiFile(s_qPlaying.c_str())); if (!n.empty()) quickPlayFile(n); return; }   // (it looked for MIDI only, so Opus/MP3 stopped after one song)
   s_qLast = st;
 }
 

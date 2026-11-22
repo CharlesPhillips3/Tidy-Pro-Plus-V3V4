@@ -26,7 +26,13 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.6. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.7. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.7: music fixes
+- **Music in a game goes on to the next song** for Opus and MP3 too. With the Music window closed, the games'
+  music bar only looked for another MIDI file when a song ended, so other music stopped after one song.
+- **The Music list highlights the song that's playing**: Next, Prev, shuffle and the next song after one ends
+  move the highlight (and scroll the list to it) instead of leaving the old song lit.
 
 ### 3.4.6: browser screen keeps up with fast games
 - `screen.cpp`: the search for changed screen rows carries on from where the last batch stopped and wraps round,
