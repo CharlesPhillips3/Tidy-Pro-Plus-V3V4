@@ -26,7 +26,16 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.10. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.11. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.11: game music, take two
+- MP3 / MIDI in a game go by what the browser says is playing, not what the board remembers: after the page was
+  reloaded (or the board's idea was out of date) the first tap could send "pause" or "resume" to music that
+  wasn't there, so nothing played until Next. Now a tap starts the song if it isn't really playing.
+- If the browser hasn't started a song 5 s after it was asked, the board asks again (twice at most).
+- The Music window's Play does the same after a page reload.
+- The browser now reports music errors to the board's serial log ("[browser] audio: ..."), with "[music]" lines
+  for what the board asked for, so a song that won't play can be tracked down.
 
 ### 3.4.10: smoother games, music starts first time
 - **Smoother games in the browser**: the board now sends only the changed stretch of each screen row (it keeps a

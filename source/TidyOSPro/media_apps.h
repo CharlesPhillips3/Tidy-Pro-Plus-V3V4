@@ -422,6 +422,8 @@ public:
       skip(1);
       return;
     }
+    int st, pos, dur; screenMediaState(st, pos, dur);
+    if (paused && st != 0) { play(playing); return; }      // the browser lost it (a new page): start it again
     paused = !paused;
     screenMedia(paused ? "p" : "r");
     playBtn->setText(paused ? "Play" : "Pause"); playBtn->repaint();
@@ -498,12 +500,17 @@ void openMusic()
 static std::string s_qPlaying;
 static bool s_qPaused = false;
 static int  s_qLast = 2;
+static int  s_qEpoch = -1;          // the browser page that was told to play it
+static uint32_t s_qAt = 0;          // when it was asked for
+static int  s_qRetry = 0;
 
 static float s_qVol = 0.8f;
 static void quickPlayFile(const std::string & p)
 {
   fileServerMediaReady();          // (the first song used to be asked for before the server was listening: no music until Next)
-  s_qPlaying = p; s_qPaused = false; s_qLast = 2;
+  if (p != s_qPlaying) s_qRetry = 0;
+  s_qPlaying = p; s_qPaused = false; s_qLast = 2; s_qEpoch = screenMediaEpoch(); s_qAt = millis();
+  Serial.printf("[music] game music: %s\n", p.c_str());
   char v[24]; snprintf(v, sizeof(v), "v %.2f", s_qVol);
   screenMedia(v);
   screenMedia((isMidiFile(p.c_str()) ? "m " : "a ") + fileServerMediaPath(p));
@@ -543,9 +550,13 @@ std::string musicQuickToggle(bool midi)
   }
   if (WiFi.status() != WL_CONNECTED && !screenViewer()) return "Music plays in the web browser.";
   if (!screenViewer()) return "Music plays in the web browser.";
+  // what the board remembers can be out of date (a new browser page has no music): go by what the page says
+  if (!s_qPlaying.empty() && s_qEpoch != screenMediaEpoch()) { s_qPlaying.clear(); s_qPaused = false; }
+  int st, pos, dur; screenMediaState(st, pos, dur);
   bool same = !s_qPlaying.empty() && isMidiFile(s_qPlaying.c_str()) == midi;
-  if (same && !s_qPaused) { screenMedia("p"); s_qPaused = true; return "Music paused."; }
-  if (same && s_qPaused)  { screenMedia("r"); s_qPaused = false; return "Music: " + baseName(s_qPlaying); }
+  if (same && !s_qPaused && st == 1) { screenMedia("p"); s_qPaused = true; return "Music paused."; }
+  if (same && s_qPaused && st == 0)  { screenMedia("r"); s_qPaused = false; return "Music: " + baseName(s_qPlaying); }
+  if (same) { quickPlayFile(s_qPlaying); return "Music: " + baseName(s_qPlaying); }   // it isn't actually playing: start it again
   std::string p = randomSong(mediaFolder(midi), "", midi);
   if (p.empty()) return midi ? "No .mid files in the MIDI folder on the card." : "No music in the Music folder on the card.";
   quickPlayFile(p);
@@ -585,6 +596,9 @@ void musicQuickTick()             // once a second: on to the next song when one
   if (MusicApp::inst || s_qPlaying.empty() || s_qPaused) return;
   int st, pos, dur;
   screenMediaState(st, pos, dur);
+  // asked for, but the page hasn't started it 5 s later: ask again (twice at most)
+  if (st != 1 && st != 2 && millis() - s_qAt > 5000 && s_qRetry < 2) { ++s_qRetry; Serial.println("[music] not playing yet - asking the browser again"); quickPlayFile(s_qPlaying); return; }
+  if (st == 1) s_qRetry = 0;
   if (st == 2 && s_qLast != 2) { std::string n = randomSong(dirOf(s_qPlaying), baseName(s_qPlaying), isMidiFile(s_qPlaying.c_str())); if (!n.empty()) quickPlayFile(n); return; }   // (it looked for MIDI only, so Opus/MP3 stopped after one song)
   s_qLast = st;
 }

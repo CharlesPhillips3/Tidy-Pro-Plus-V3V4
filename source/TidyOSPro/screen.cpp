@@ -50,6 +50,7 @@ static char          s_mediaQ[4][300];    // media commands waiting for the page
 static volatile uint8_t s_mqW = 0, s_mqR = 0;
 static portMUX_TYPE  s_mqMux = portMUX_INITIALIZER_UNLOCKED;
 static volatile int  s_mState = -1, s_mPos = 0, s_mDur = 0;
+static volatile int  s_mEpoch = 0;     // +1 for every new browser page: music it was playing is gone with the old one
 
 // ---------------------------------------------------------------- the page
 static const char PAGE[] = R"HTML(<!DOCTYPE html><html><head><meta charset="utf-8">
@@ -141,6 +142,7 @@ function alarmBanner(on){var e=document.getElementById('alm');if(!e){e=document.
  e.style.display=on?'block':'none';document.title=on?'⏰ Alarm - TidyOS':'TidyOS';}
 function unlockSound(){if(!bA){try{bA=new Audio(beepWav());bA.volume=0;bA.play().then(function(){bA.pause();bA.volume=1;}).catch(function(){bA.volume=1;});}catch(e){}}}
 function mUrl(p){return location.protocol+'//'+location.hostname+':'+MP+p;}
+function blog(t){try{send([21].concat(Array.from(new TextEncoder().encode(String(t).slice(0,200)))));}catch(e){}}
 function auReport(){if(!au)return;var t=au.currentTime|0,u=isFinite(au.duration)?au.duration|0:0;send([8,au.ended?2:au.paused?0:1,t&255,t>>8&255,u&255,u>>8&255]);}
 var midiCur=null;
 function midiParse(d){var p=0,u16=function(){var v=d[p]<<8|d[p+1];p+=2;return v;},u32=function(){var v=(d[p]<<24|d[p+1]<<16|d[p+2]<<8|d[p+3])>>>0;p+=4;return v;},
@@ -486,8 +488,8 @@ function media(t){var k=t.charAt(0),v=t.substr(2),iv=document.getElementById('iv
   else if(v=='nourl'){dropQ=[];note('Set the Git-Store relay address first.',6000);}
   else{dropQ=[];note('TidyOS has nowhere to keep files right now (no SD card and no board storage).',6000);}return;}
  if(k=='a'){midiStop();if(!au){au=new Audio();au.onended=auReport;setInterval(auReport,1000);
-   au.onerror=function(){if(au.tries++<4&&au.getAttribute('src'))setTimeout(function(){au.load();au.play().catch(function(){auBlocked=true;});},1500);};}
-  au.tries=0;au.src=mUrl(v);au.play().catch(function(e){if(e&&e.name=='NotAllowedError')auBlocked=true;});}
+   au.onerror=function(){blog('audio: error '+(au.error?au.error.code+' '+(au.error.message||''):'?')+', try '+au.tries);if(au.tries++<4&&au.getAttribute('src'))setTimeout(function(){au.load();au.play().catch(function(){auBlocked=true;});},1500);};}
+  au.tries=0;au.src=mUrl(v);blog('audio: play '+v);au.play().catch(function(e){blog('audio: play() refused: '+(e&&e.name)+' '+(e&&e.message));if(e&&e.name=='NotAllowedError')auBlocked=true;});}
  else if(k=='p'&&au)au.pause();else if(k=='r'&&au)au.play().catch(function(){auBlocked=true;});
  else if(k=='s'&&au){au.pause();au.removeAttribute('src');au.load();send([8,255,0,0,0,0]);}
  else if(k=='v'&&au)au.volume=Math.max(0,Math.min(1,+v));else if(k=='k'&&au)au.currentTime=+v;
@@ -730,6 +732,7 @@ static bool pollInput(WiFiClient & c)
       case 17: { p[keep < sizeof(p) ? keep : sizeof(p) - 1] = 0; deskTempsFromPage((const char *)p + 1); break; } // temperatures, last 4 days
       case 19: { p[keep < sizeof(p) ? keep : sizeof(p) - 1] = 0; deskFieldFromPage((const char *)p + 1); break; } // TidyOS Pro field conditions
       case 14: { p[keep < sizeof(p) ? keep : sizeof(p) - 1] = 0; deskNewsFromPage((const char *)p + 1); break; } // news headlines
+      case 21: { p[keep < sizeof(p) ? keep : sizeof(p) - 1] = 0; Serial.printf("[browser] %s\n", (const char *)p + 1); break; }   // the page's own notes (music errors)
       case 5: inputWebReleaseAll(); break;
       case 6: if (keep >= 5) netSetClockFrom(p[1] | (p[2] << 8) | (p[3] << 16) | ((uint32_t)p[4] << 24)); break;
       case 8: if (keep >= 6) { s_mState = p[1] == 255 ? -1 : p[1]; s_mPos = p[2] | (p[3] << 8); s_mDur = p[4] | (p[5] << 8); } break;
@@ -797,6 +800,7 @@ static void handleHttp(WiFiClient c, const std::string & req)
     s_sentHome[0] = 0;
     s_view = true;
     Serial.println("[TidyOS] browser connected");
+    s_mState = -1; s_mEpoch++;
     return;
   }
   std::string p = path.substr(0, path.find('?'));
@@ -998,6 +1002,7 @@ void screenMedia(const std::string & cmd)
 }
 
 void screenMediaState(int & state, int & pos, int & dur) { state = s_mState; pos = s_mPos; dur = s_mDur; }
+int  screenMediaEpoch() { return s_mEpoch; }
 bool screenApOn()   { return s_ap; }
 void screenTrim()            // the Optimize button: let go of what isn't being used
 {
