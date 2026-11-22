@@ -26,7 +26,20 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.4. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.5. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.5: copy files over USB, a real update bar, ticking seconds
+- **Copy files over USB** (the flasher page): connect with the USB cable, pick the SD card or the board's own
+  storage, open a folder (Music and Pictures are one click) and drop files in; Save and Delete what's there. Works
+  through the same port as the serial console, while TidyOS Pro runs (`~` lines in, `\x02TF` answers out:
+  `source/TidyOSPro/usbfiles.cpp`). Roughly 50-150 KB a second.
+- **The update bar** follows the real download and shows its percent beside it (no creeping ahead, no icon
+  parade slowing the download); the KB count stays on one line.
+- **Clock**: the taskbar's seconds tick every second again (the colon stays steady). The OLED clock page ticks too.
+- **Files → Move to...**: pick a file, then the folder (and a new name if you like) to move it to. Between the SD
+  card and the board's own storage it's copied, checked, and only then deleted from where it was.
+- **News** is back to one line, every headline in turn, still sliding smoothly; the wind and storm graphs are
+  their full height again.
 
 ### 3.4.4: 900 MHz Coms mesh, two lines of news, a calmer bar
 - **Messages → Coms mesh 2.4 + 900**: on a Heltec V4 the Coms mesh now runs over **900 MHz LoRa** as well as

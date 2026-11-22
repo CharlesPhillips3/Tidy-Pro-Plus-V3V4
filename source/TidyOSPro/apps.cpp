@@ -1605,12 +1605,13 @@ public:
     button("New folder", bx, cy + 28,  122)->onClick = [this]() { newFolder(); };
     button("Rename",     bx, cy + 56,  122)->onClick = [this]() { rename(); };
     button("Delete",     bx, cy + 84,  122)->onClick = [this]() { del(); };
-    button("New note",   bx, cy + 124, 122)->onClick = []() { openNeat(nullptr); };
-    button("New sheet",  bx, cy + 152, 122)->onClick = []() { openTidy(nullptr); };
-    shareBtn = button("", bx, cy + 192, 122, 40);
+    button("Move to...", bx, cy + 112, 122)->onClick = [this]() { moveSel(); };
+    button("New note",   bx, cy + 146, 122)->onClick = []() { openNeat(nullptr); };
+    button("New sheet",  bx, cy + 174, 122)->onClick = []() { openTidy(nullptr); };
+    shareBtn = button("", bx, cy + 206, 122, 36);
     shareBtn->onClick = [this]() { fileServerSet(!fileServerOn()); updateShare(); };
-    button("Scroll up",  bx, cy + 240, 122)->onClick = [this]() { fl->scroll(-10); };
-    button("Scroll down", bx, cy + 268, 122)->onClick = [this]() { fl->scroll(10); };
+    button("Scroll up",  bx, cy + 248, 122)->onClick = [this]() { fl->scroll(-10); };
+    button("Scroll down", bx, cy + 276, 122)->onClick = [this]() { fl->scroll(10); };
     info = label("", cx, cy + 306, 440, 18);
     info->labelStyle().textFont = &FONT_std_12;
     updateShare();
@@ -1655,6 +1656,37 @@ public:
       fl->setDir(fl->dir);
       updateInfo();
     }
+  }
+
+  // Move to...: pick the folder (and, if you like, a new name) in the file picker. Between the SD card and the
+  // board's own storage it's copied and then the original deleted (only once the copy is complete).
+  void moveSel() {
+    if (selName.empty()) { info->setText("Click a file first, then Move to..."); info->repaint(); return; }
+    std::string from = selPath();
+    std::string to = askFile((std::string("Move ") + selName + " to...").c_str(), "Move here", selName.c_str(), fl->dir);
+    if (to.empty() || to == from) return;
+    if (fileSize(to.c_str()) >= 0 &&
+        gApp->messageBox("Move", "A file with that name is already there. Replace it?", "Replace", "Cancel", nullptr, uiMessageBoxIcon::Question) != uiMessageBoxResult::Button1) return;
+    remove(to.c_str());
+    bool ok = ::rename(from.c_str(), to.c_str()) == 0;
+    if (!ok) {                                       // another drive: copy, check, then delete the original
+      FILE * a = fopen(from.c_str(), "rb"), * b = a ? fopen(to.c_str(), "wb") : nullptr;
+      long want = fileSize(from.c_str()), got = 0;
+      if (a && b) {
+        std::vector<uint8_t> buf(4096);
+        size_t n;
+        ok = true;
+        while ((n = fread(buf.data(), 1, buf.size(), a)) > 0) { if (fwrite(buf.data(), 1, n, b) != n) { ok = false; break; } got += n; }
+      }
+      if (a) fclose(a);
+      if (b) fclose(b);
+      ok = ok && a && b && got == want;
+      if (ok) remove(from.c_str()); else remove(to.c_str());
+    }
+    if (!ok) { gApp->messageBox("Move", "Couldn't move it (is there room where it's going?). The file is still where it was.", "OK", nullptr, nullptr, uiMessageBoxIcon::Warning); return; }
+    selName.clear();
+    fl->setDir(fl->dir);
+    info->setText(("Moved to " + to).substr(0, 70).c_str()); info->repaint();
   }
 
   void del() {

@@ -456,7 +456,7 @@ static int drawFieldPanel(Canvas * cv, Rect r, int x, int y)
 {
   char b[96];
   const RGB888 red = gColors >= 8 ? themePal(6) : T.text, green = gColors >= 8 ? themePal(7) : T.accent, cyan = gColors >= 8 ? themePal(5) : T.accent;
-  int colW = (PANEL_W - 30) / 2, gw = colW - 4, gh = 19;   // (19 px: room for two lines of news above the map)
+  int colW = (PANEL_W - 30) / 2, gw = colW - 4, gh = 24;
   int x2 = x + colW + 10;
   cv->setPenColor(T.text); cv->setBrushColor(T.win);
   cv->drawLine(x, y - 3, r.X2 - 10, y - 3);
@@ -562,17 +562,17 @@ static int drawFieldPanel(Canvas * cv, Rect r, int x, int y)
 }
 #endif
 
-// ---- rolling news headlines (Pro): two lines above the map, each with different headlines (the first line
-// takes headlines 1, 3, 5 and the second 2, 4, 6), moving smoothly a couple of pixels at a time. The desktop's
+// ---- rolling news headlines (Pro): one line above the map with every headline in turn, moving smoothly a
+// couple of pixels at a time. The desktop's
 // timer moves them on and repaints just this strip, so the rest of the panel isn't redrawn.
 struct Ticker { int pos = 0, px = 0; };              // the letter at the left edge, and how far it has slid out
 static Ticker s_tick[2];
-static Rect newsTickerRect() { Rect r = deskPanelRect(); return Rect(r.X1 + 1, r.Y2 - 157, r.X2 - 1, r.Y2 - 127); }
+static Rect newsTickerRect() { Rect r = deskPanelRect(); return Rect(r.X1 + 1, r.Y2 - 142, r.X2 - 1, r.Y2 - 127); }
 static std::string newsTickerText(int line)
 {
   std::string t;
-  for (int i = line; i < s_newsCount; i += 2) { t += s_news[i]; t += "   +++   "; }
-  if (line == 1 && s_newsCount == 1) t.clear();
+  if (line != 0) return t;                                    // one line, every headline in turn
+  for (int i = 0; i < s_newsCount; ++i) { t += s_news[i]; t += "   +++   "; }
   return t;
 }
 static void drawNewsTicker(Canvas * cv)
@@ -601,7 +601,7 @@ static void drawNewsTicker(Canvas * cv)
   cv->setBrushColor(T.win);                                   // tidy edges: the letter sliding out on the left, the one coming in on the right
   cv->fillRectangle(k.X1, k.Y1, xs - 1, k.Y2);
   cv->fillRectangle(xe + 1, k.Y1, k.X2, k.Y2);
-  cv->setBrushColor(T.accent); cv->setPenColor(T.win);        // the NEWS tag, the height of both lines
+  cv->setBrushColor(T.accent); cv->setPenColor(T.win);        // the NEWS tag
   cv->fillRectangle(x0 - 3, k.Y1 + 1, x0 + tw + 2, k.Y2 - 1);
   cv->drawText(f, x0, k.Y1 + (k.height() - (int)f->height) / 2, tag);
   cv->setBrushColor(T.win); cv->setPenColor(T.text);

@@ -833,7 +833,7 @@ public:
         }
         {                                           // the clock: repaint as soon as the second changes, so it blinks evenly
           time_t ns = time(nullptr);
-          if (ns / 5 != m_lastSec / 5) { m_lastSec = ns; repaint(Rect(imax(0, s_clockX - 4), SCREEN_H - BAR_H, SCREEN_W - 1, SCREEN_H - 1)); }   // every 5 s
+          if (ns != m_lastSec) { m_lastSec = ns; repaint(Rect(imax(0, s_clockX - 4), SCREEN_H - BAR_H, SCREEN_W - 1, SCREEN_H - 1)); }   // the seconds tick every second
         }
 #ifdef TIDYOS_PRO
         if (s_newsCount && !showingHint()) { newsTickerStep(canvas()); repaint(newsTickerRect()); }   // rolling headlines, every 100 ms
@@ -1128,7 +1128,7 @@ private:
       time_t now = time(nullptr);
       struct tm tmv;
       localtime_r(&now, &tmv);
-      // the clock: seconds (in steps of 5) when the bar has room for them
+      // the clock: with seconds when the bar has room for them
       if (tmv.tm_year > 100) {
         const fabgl::FontInfo * f = &FONT_std_14;
         int h = tmv.tm_hour % 12; if (h == 0) h = 12;
@@ -1142,8 +1142,7 @@ private:
         int w = cv->textExtent(f, hs) + cw + dw + (secs ? cw + dw : 0) + cv->textExtent(f, ap);
         int cx = SCREEN_W - w - 8, cy = by + 3;
         s_clockX = cx;
-        bool on = true;                                  // steady colon (no blinking); the seconds move every 5 s
-        snprintf(ss, sizeof(ss), "%02d", tmv.tm_sec / 5 * 5);
+        bool on = true;                                  // steady colon (no blinking); the seconds tick every second
         cv->drawText(f, cx, cy, hs); cx += cv->textExtent(f, hs);
         if (on) cv->drawText(f, cx, cy, ":"); cx += cw;
         cv->drawText(f, cx, cy, ms); cx += dw;
@@ -1430,6 +1429,7 @@ static void splashLogo()
 static SemaphoreHandle_t s_barMux = nullptr;
 static volatile int  s_barShown = 0, s_barCeil = 0;
 static volatile bool s_barRun = false, s_barAlive = false;
+static bool s_barExact = false;     // update mode: the bar shows the real download progress and its percent (no creeping, no icons)
 
 static void drawBar(Canvas & cv, int percent)
 {
@@ -1510,7 +1510,7 @@ static void splash(const char * msg, int percent)
   cv.setBrushColor(T.desk);
   cv.fillRectangle(0, BAR_Y + 20, SCREEN_W - 1, BAR_Y + 40);
   // icons up to this step's share march in, and the bar slides up with them
-  {
+  if (!s_barExact) {
     int target = NICONS * (percent > 100 ? 100 : percent) / 100;
     if (target <= s_parade) target = imin(NICONS, s_parade + 1);      // at least one new icon per step
     int from = s_barShown, to = percent > from ? percent : from, n = target - s_parade;
@@ -1531,14 +1531,24 @@ static void splash(const char * msg, int percent)
   } else {
     s_barCeil = shown;
   }
+  if (s_barExact) s_barCeil = shown;                  // the real figure: no creeping ahead of the download
   drawBar(cv, shown);
+  if (s_barExact) {                                    // the percent, right of the bar
+    char pc[8]; snprintf(pc, sizeof(pc), "%d%%", shown);
+    cv.setBrushColor(T.desk);
+    cv.fillRectangle(BAR_X + BAR_W + 6, BAR_Y - 2, BAR_X + BAR_W + 60, BAR_Y + BAR_H + 2);
+    cv.setPenColor(T.deskText);
+    cv.drawText(&FONT_std_14, BAR_X + BAR_W + 8, BAR_Y + BAR_H / 2 - 7, pc);
+  }
   int tw = cv.textExtent(&FONT_std_14, msg);
   cv.setPenColor(T.deskText);
   cv.drawText(&FONT_std_14, BAR_X + BAR_W / 2 - tw / 2, BAR_Y + 22, msg);
   // the checklist: every step so far, ticked once the next one starts
   static char steps[8][48];
   static int nSteps = 0;
-  if (strcmp(msg, "Ready") != 0 && (nSteps == 0 || strcmp(steps[(nSteps - 1) % 8], msg) != 0) && nSteps < 8)
+  if (nSteps > 0 && !strncmp(steps[nSteps - 1], msg, 12) && !strncmp(msg, "Downloading", 11))
+    strlcpy(steps[nSteps - 1], msg, sizeof(steps[0]));             // the download's KB count: one line, kept up to date
+  else if (strcmp(msg, "Ready") != 0 && (nSteps == 0 || strcmp(steps[(nSteps - 1) % 8], msg) != 0) && nSteps < 8)
     strlcpy(steps[nSteps++], msg, sizeof(steps[0]));
   bool allDone = percent >= 100;
   cv.setBrushColor(T.desk);
@@ -1869,6 +1879,7 @@ void setup()
 #ifdef TIDYOS_HTML5
   esp_bt_controller_mem_release(ESP_BT_MODE_BTDM);   // no Bluetooth in this edition: give its RAM to apps
 #endif
+  Serial.setRxBufferSize(6144);   // room for a whole line from the flasher's "Copy files over USB" (256 drops bytes)
   Serial.begin(115200);
   delay(200);
   crashBegin();     // did the last run crash? (Task Manager shows it)
@@ -1901,6 +1912,7 @@ void setup()
     screenBegin();
 #endif
     splashLogo();
+    s_barExact = true;
     barStart();
     // the update (HTTPS, certificate checks, writing to the card or the board's storage) needs much more
     // stack than the loop task has, so it runs in a task of its own; it restarts the board when done

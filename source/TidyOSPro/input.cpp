@@ -775,14 +775,22 @@ static void serialCommand(const std::string & c)
   }
 }
 
+void usbFilesLine(const std::string & line);   // usbfiles.cpp: the flasher's "Copy files over USB"
+
 static void serialStep()       // one pass over the serial input (runs inside the key-repeat task)
 {
   static int esc = 0;
-  static bool cmd = false, lineStart = true;
-  static std::string cmdLine;
+  static bool cmd = false, lineStart = true, fl = false;
+  static std::string cmdLine, fline;
   {
     while (Serial.available()) {
       int ch = Serial.read();
+      if (lineStart && ch == '~') { fl = true; fline.clear(); lineStart = false; continue; }   // a file line from the flasher
+      if (fl) {
+        if (ch == '\r' || ch == '\n') { fl = false; lineStart = true; usbFilesLine(fline); fline.clear(); }
+        else if (fline.size() < 6000) fline += (char)ch;
+        continue;
+      }
       if (lineStart && ch == '!') { cmd = true; cmdLine.clear(); lineStart = false; continue; }
       if (cmd) {
         if (ch == '\r' || ch == '\n') { cmd = false; lineStart = true; serialCommand(cmdLine); }
