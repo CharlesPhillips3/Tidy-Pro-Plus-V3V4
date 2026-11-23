@@ -3,7 +3,9 @@
 #include "shelf.h"
 #include <WiFi.h>
 #include <HTTPClient.h>
+#include <WiFiClientSecure.h>
 #include <algorithm>
+#include <Preferences.h>
 
 static const char* const COLLECTIONS[] = {"notes", "documents", "presentations", "sheets", nullptr};
 static String collDir(const String& kind) { return String(DATA_ROOT "/") + kind; }
@@ -205,28 +207,296 @@ void recordVisitor(const String& ip) {
   saveJsonFile(VISITORS_FILE, v);
 }
 
+// ------------------------------------------------------------ outside temperature, last 4 days
+static String wxKey;                                // the weather cache's place (see weather())
+static String wxErr;                                // why there's no graph yet (settings page)
+// now: for The Shelf's Home page (°F, Open-Meteo's weather code)
+static float curF = NAN; static int curCode = -1; static bool curDay = true; static uint32_t curAt = 0;
+// The board learns where it is from The Shelf's Home page (its weather asks with the browser's
+// location), keeps that, and once an hour (on a home Wi-Fi with internet) fetches the hourly
+// temperature for the past 4 days from Open-Meteo, for the screen's graph.
+static Preferences wxp; static bool wxpOpen = false;
+static float wxLat = NAN, wxLon = NAN;
+static bool wxManual = false;                       // set by hand on the settings page: browsers don't change it
+static String wxPlace;
+static float hist[WX_HOURS]; static int histN = 0; static uint32_t histStart = 0;
+static uint32_t histAt = 0; static volatile bool histBusy = false;
+static portMUX_TYPE histMux = portMUX_INITIALIZER_UNLOCKED;
+static void wxOpen() {
+  if (wxpOpen) return;
+  wxp.begin("wx", false); wxpOpen = true;
+  wxLat = wxp.getFloat("lat", NAN); wxLon = wxp.getFloat("lon", NAN);
+  wxManual = wxp.getBool("manual", false); wxPlace = wxp.getString("place", "");
+}
+void wxRemember(double lat, double lon) {
+  wxOpen();
+  if (wxManual) return;
+  if (!isnan(wxLat) && fabs(wxLat - lat) < 0.05 && fabs(wxLon - lon) < 0.05) return;
+  wxLat = lat; wxLon = lon; wxp.putFloat("lat", wxLat); wxp.putFloat("lon", wxLon);
+  wxPlace = "From a browser"; wxp.putString("place", wxPlace);
+  histAt = 0;                                       // somewhere new: fetch again soon
+}
+static String urlEnc(const String& v) {
+  String o; char h[4];
+  for (size_t i = 0; i < v.length(); i++) {
+    char c = v[i];
+    if (isalnum((unsigned char)c) || c == '-' || c == '.' || c == '_') o += c; else { snprintf(h, sizeof h, "%%%02X", (uint8_t)c); o += h; }
+  }
+  return o;
+}
+// The board's location, from its settings page:
+//   GET  /api/board/location               {lat, lon, place, manual}
+//   GET  /api/board/location/search?q=...  places with that name (Open-Meteo's geocoding)
+//   POST /api/board/location               {lat, lon, place}  set it by hand;  {auto:true}  back to the browser's
+static void wxPush(AsyncWebServerRequest* r);
+static void newsPush(AsyncWebServerRequest* r);
+bool handleLocationApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m) {
+  if (url == "/api/board/wxdata" && m == HTTP_POST) { wxPush(r); return true; }
+  if (url == "/api/board/news" && m == HTTP_POST) { newsPush(r); return true; }
+  if (url != "/api/board/location" && url != "/api/board/location/search") return false;
+  wxOpen();
+  if (url == "/api/board/location/search") {
+    String q = r->hasParam("q") ? r->getParam("q")->value() : "";
+    q.trim();
+    if (q.length() < 2) { sendErr(r, 400, "Type a town, city or ZIP code."); return true; }
+    if (!staOK) { sendErr(r, 502, "The board needs your home Wi-Fi (with internet) to look places up."); return true; }
+    HTTPClient http; http.setTimeout(8000);
+    String u = "http://geocoding-api.open-meteo.com/v1/search?count=6&language=en&format=json&name=" + urlEnc(q);
+    if (!http.begin(u)) { sendErr(r, 502, "Couldn't reach the place finder."); return true; }
+    int code = http.GET();
+    if (code != 200) { http.end(); sendErr(r, 502, String("Couldn't reach the place finder (") + code + ")."); return true; }
+    JsonDocument f; JsonObject fe = f["results"][0].to<JsonObject>();
+    fe["name"] = true; fe["latitude"] = true; fe["longitude"] = true; fe["admin1"] = true; fe["country"] = true; fe["postcodes"] = true;
+    JsonDocument j(&psAlloc);
+    DeserializationError e = deserializeJson(j, http.getStream(), DeserializationOption::Filter(f));
+    http.end();
+    if (e) { sendErr(r, 502, "Unexpected answer from the place finder."); return true; }
+    JsonDocument out(&psAlloc); JsonArray a = out.to<JsonArray>();
+    for (JsonObject p : j["results"].as<JsonArray>()) {
+      JsonObject o = a.add<JsonObject>();
+      String nm = p["name"] | "";
+      if (!p["admin1"].isNull()) nm += String(", ") + (const char*)p["admin1"];
+      if (!p["country"].isNull()) nm += String(", ") + (const char*)p["country"];
+      o["place"] = nm; o["lat"] = p["latitude"]; o["lon"] = p["longitude"];
+    }
+    sendDoc(r, out);
+    return true;
+  }
+  if (m == HTTP_POST) {
+    JsonDocument b; parseBody(r, b);
+    if (b["auto"] | false) {
+      wxManual = false; wxPlace = ""; wxp.putBool("manual", false); wxp.remove("place");
+      wxLat = wxLon = NAN; wxp.remove("lat"); wxp.remove("lon"); histAt = 0;   // found again: browser or internet address
+    } else {
+      float la = b["lat"] | NAN, lo = b["lon"] | NAN;
+      if (isnan(la) || isnan(lo) || la < -90 || la > 90 || lo < -180 || lo > 180) { sendErr(r, 400, "That isn't a place on the map."); return true; }
+      wxLat = la; wxLon = lo; wxManual = true; wxPlace = String(b["place"] | "").substring(0, 80);
+      wxp.putFloat("lat", wxLat); wxp.putFloat("lon", wxLon); wxp.putBool("manual", true); wxp.putString("place", wxPlace);
+      histAt = 0; wxKey = ""; curAt = 0; portENTER_CRITICAL(&histMux); histN = 0; portEXIT_CRITICAL(&histMux);   // the new place's
+    }
+  }
+  JsonDocument o;
+  if (isnan(wxLat)) { o["lat"] = nullptr; o["lon"] = nullptr; } else { o["lat"] = wxLat; o["lon"] = wxLon; }
+  o["place"] = wxPlace; o["manual"] = wxManual;
+  o["hours"] = histN; o["error"] = wxErr; o["online"] = staOK;
+  if (histAt && histN) o["minutesAgo"] = (millis() - histAt) / 60000;
+  sendDoc(r, o);
+  return true;
+}
+const char* wxStatusText() {                        // the screen's graph page, while it has nothing to draw
+  if (!staOK) return "Needs home Wi-Fi";
+  if (wxErr.length()) return "Couldn't get them yet";
+  return "Getting them...";
+}
+// The GPS has a fix: the board is exactly here (beats a typed-in ZIP or an internet-address guess).
+// Saved when it's moved a kilometre or so, and the weather is fetched for the new place.
+void wxFromGps(double lat, double lon) {
+  wxOpen();
+  bool moved = isnan(wxLat) || fabs(wxLat - lat) > 0.01 || fabs(wxLon - lon) > 0.01;
+  wxLat = lat; wxLon = lon;
+  if (moved) {
+    wxp.putFloat("lat", wxLat); wxp.putFloat("lon", wxLon);
+    wxPlace = "From the GPS"; wxp.putString("place", wxPlace);
+    if (isnan(wxLat) || histAt) histAt = 0;
+  }
+}
+bool wxLocation(float& lat, float& lon) { wxOpen(); lat = wxLat; lon = wxLon; return !isnan(wxLat); }
+int wxHistoryCopy(float* out, int max, uint32_t* startUtc) {
+  portENTER_CRITICAL(&histMux);
+  int n = std::min(histN, max);
+  memcpy(out, hist + (histN - n), n * sizeof(float));
+  if (startUtc) *startUtc = histStart + (histN - n) * 3600;
+  portEXIT_CRITICAL(&histMux);
+  return n;
+}
+// No location yet (browsers only share theirs over https, and the board is plain http): guess it
+// from the home internet connection's address. Good to a city or so; set it by hand to be exact.
+static bool getJson(const String& url, JsonDocument& doc, JsonDocument& filter);
+static bool ipLocate() {
+  JsonDocument f; f["success"] = true; f["latitude"] = true; f["longitude"] = true; f["city"] = true; f["region"] = true;
+  f["status"] = true; f["lat"] = true; f["lon"] = true; f["regionName"] = true;
+  JsonDocument j;
+  float la = NAN, lo = NAN; String city, region;
+  if (getJson("https://ipwho.is/", j, f) && (j["success"] | true) && !j["latitude"].isNull()) {
+    la = j["latitude"]; lo = j["longitude"]; city = j["city"] | ""; region = j["region"] | "";
+  } else if (getJson("http://ip-api.com/json/?fields=status,lat,lon,city,regionName", j, f) && String(j["status"] | "") == "success") {
+    la = j["lat"]; lo = j["lon"]; city = j["city"] | ""; region = j["regionName"] | "";
+  }
+  if (isnan(la)) return false;
+  wxLat = la; wxLon = lo;
+  wxPlace = city + ", " + region + " (from your internet address)";
+  wxp.putFloat("lat", wxLat); wxp.putFloat("lon", wxLon); wxp.putString("place", wxPlace);
+  return true;
+}
+// Keep the hours up to now, newest last (from Open-Meteo's hourly time / temperature_2m arrays).
+static bool storeHours(JsonArray t, JsonArray v) {
+  uint32_t now = (uint32_t)time(nullptr) + 60;
+  static float tmp[WX_HOURS]; int n = 0; uint32_t first = 0;
+  for (size_t i = 0; i < t.size() && i < v.size(); i++) {
+    uint32_t ts = t[i] | 0u;
+    if (!ts || ts > now || v[i].isNull()) continue;                 // past hours only
+    if (n == WX_HOURS) { memmove(tmp, tmp + 1, (n - 1) * sizeof(float)); n--; first += 3600; }
+    if (!n) first = ts;
+    tmp[n++] = v[i].as<float>();
+  }
+  if (n < 12) return false;
+  portENTER_CRITICAL(&histMux);
+  memcpy(hist, tmp, n * sizeof(float)); histN = n; histStart = first;
+  portEXIT_CRITICAL(&histMux);
+  return true;
+}
+
+// A GET that copes with https (Open-Meteo sends plain http over to https now, and the board's old
+// plain-http requests got a redirect instead of the weather). Runs in its own task: the secure
+// connection needs more stack than the web server's.
+static bool getJson(const String& url, JsonDocument& doc, JsonDocument& filter) {
+  HTTPClient http; http.setTimeout(12000);
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  WiFiClientSecure tls; WiFiClient plain;
+  bool ok;
+  if (url.startsWith("https://")) { tls.setInsecure(); ok = http.begin(tls, url); } else ok = http.begin(plain, url);
+  if (!ok) return false;
+  int code = http.GET();
+  if (code != 200) { Serial.printf("[shelf] weather: %s answered %d\n", url.substring(0, 40).c_str(), code); http.end(); return false; }
+  DeserializationError e = deserializeJson(doc, http.getStream(), DeserializationOption::Filter(filter));
+  http.end();
+  return !e;
+}
+
+static void wxTask(void*) {
+  if (isnan(wxLat) && !ipLocate()) {
+    wxErr = "Couldn't work out where the board is. Set its location below.";
+    histAt = millis() - 3000000; histBusy = false; vTaskDelete(nullptr); return;
+  }
+  char url[300];
+  snprintf(url, sizeof url, "https://api.open-meteo.com/v1/forecast?latitude=%.3f&longitude=%.3f&current=temperature_2m,weather_code,is_day&hourly=temperature_2m&past_days=4&forecast_days=1&temperature_unit=fahrenheit&timeformat=unixtime", wxLat, wxLon);
+  JsonDocument f; f["hourly"]["time"] = true; f["hourly"]["temperature_2m"] = true;
+  f["current"]["temperature_2m"] = true; f["current"]["weather_code"] = true; f["current"]["is_day"] = true;
+  JsonDocument j(&psAlloc);
+  bool ok = getJson(url, j, f) && storeHours(j["hourly"]["time"], j["hourly"]["temperature_2m"]);
+  if (ok && !j["current"]["temperature_2m"].isNull()) {
+    curF = j["current"]["temperature_2m"]; curCode = j["current"]["weather_code"] | -1; curDay = (j["current"]["is_day"] | 1) != 0; curAt = millis() | 1;
+  }
+  wxErr = ok ? "" : "Couldn't get the temperatures. Trying again in 5 minutes (or open The Shelf).";
+  histAt = ok ? millis() | 1 : millis() - 3300000;                  // didn't work: try again in 5 minutes
+  histBusy = false;
+  vTaskDelete(nullptr);
+}
+void wxHistoryTick() {
+  if (!staOK || histBusy || time(nullptr) < 1700000000) return;
+  wxOpen();
+  if (histAt && millis() - histAt < 3600000) return;
+  histBusy = true;
+  if (xTaskCreatePinnedToCore(wxTask, "wxhist", 12288, nullptr, 1, nullptr, 1) != pdPASS) { histBusy = false; histAt = millis() - 3300000; }
+}
+
+// ------------------------------------------------------------ news headlines, for the screen
+// The top 6 headlines (NPR, or BBC News if NPR doesn't answer), every 30 minutes on a home Wi-Fi
+// with internet, through rss2json (the feed as JSON). A browser with The Shelf open passes them on
+// too (POST /api/board/news), the way TidyOS does.
+static char news[NEWS_MAX][NEWS_LEN]; static int newsN = 0; static char newsSrc[16] = "";
+static uint32_t newsAt = 0; static volatile bool newsBusy = false;
+static portMUX_TYPE newsMux = portMUX_INITIALIZER_UNLOCKED;
+// plain ASCII for the screen's fonts: curly quotes, dashes and the like made plain, the rest dropped
+static void plainCopy(char* out, size_t max, const char* in) {
+  size_t o = 0;
+  for (const unsigned char* p = (const unsigned char*)in; *p && o < max - 1; ) {
+    if (*p < 0x80) { out[o++] = *p++ == '\n' ? ' ' : p[-1]; continue; }
+    const char* rep = nullptr;
+    if (p[0] == 0xE2 && p[1] == 0x80) {
+      switch (p[2]) { case 0x98: case 0x99: rep = "'"; break; case 0x9C: case 0x9D: rep = "\""; break;
+                      case 0x93: case 0x94: rep = "-"; break; case 0xA6: rep = "..."; break; }
+      p += 3;
+    } else if (p[0] == 0xC2 && p[1] == 0xA0) { rep = " "; p += 2; }
+    else { p++; while ((*p & 0xC0) == 0x80) p++; }
+    for (const char* r = rep; r && *r && o < max - 1; r++) out[o++] = *r;
+  }
+  out[o] = 0;
+  // &amp; and friends
+  String t = out; t.replace("&amp;", "&"); t.replace("&#39;", "'"); t.replace("&quot;", "\""); t.trim();
+  snprintf(out, max, "%s", t.c_str());
+}
+static void newsTask(void*) {
+  static const char* const FEEDS[][2] = {{"https://feeds.npr.org/1001/rss.xml", "NPR"}, {"https://feeds.bbci.co.uk/news/rss.xml", "BBC News"}};
+  bool ok = false;
+  for (auto& fd : FEEDS) {
+    JsonDocument f; f["status"] = true; f["items"][0]["title"] = true;
+    JsonDocument j(&psAlloc);
+    if (!getJson(String("https://api.rss2json.com/v1/api.json?rss_url=") + urlEnc(fd[0]), j, f)) continue;
+    JsonArray it = j["items"];
+    if (String(j["status"] | "") != "ok" || it.size() == 0) continue;
+    char tmp[NEWS_MAX][NEWS_LEN]; int n = 0;
+    for (JsonVariant v : it) { if (n == NEWS_MAX) break; plainCopy(tmp[n], NEWS_LEN, v["title"] | ""); if (tmp[n][0]) n++; }
+    if (!n) continue;
+    portENTER_CRITICAL(&newsMux);
+    memcpy(news, tmp, sizeof tmp); newsN = n; snprintf(newsSrc, sizeof newsSrc, "%s", fd[1]);
+    portEXIT_CRITICAL(&newsMux);
+    ok = true; break;
+  }
+  newsAt = ok ? millis() | 1 : millis() - 1500000;                 // didn't work: again in 5 minutes
+  newsBusy = false;
+  vTaskDelete(nullptr);
+}
+void newsTick() {
+  if (!staOK || newsBusy || histBusy || (newsAt && millis() - newsAt < 1800000)) return;   // (one secure fetch at a time)
+  newsBusy = true;
+  if (xTaskCreatePinnedToCore(newsTask, "news", 12288, nullptr, 1, nullptr, 1) != pdPASS) { newsBusy = false; newsAt = millis() - 1500000; }
+}
+int newsCopy(char out[][NEWS_LEN], int max, char* src, size_t srcMax) {
+  portENTER_CRITICAL(&newsMux);
+  int n = std::min(newsN, max);
+  memcpy(out, news, n * NEWS_LEN);
+  if (src) snprintf(src, srcMax, "%s", newsSrc);
+  portEXIT_CRITICAL(&newsMux);
+  return n;
+}
+// a browser passing on what it fetched: {titles:[...], source}
+static void newsPush(AsyncWebServerRequest* r) {
+  JsonDocument b(&psAlloc);
+  if (!parseBody(r, b) || !b["titles"].is<JsonArray>()) return sendErr(r, 400, "Invalid request");
+  char tmp[NEWS_MAX][NEWS_LEN]; int n = 0;
+  for (JsonVariant v : b["titles"].as<JsonArray>()) { if (n == NEWS_MAX) break; plainCopy(tmp[n], NEWS_LEN, v | ""); if (tmp[n][0]) n++; }
+  if (n) {
+    portENTER_CRITICAL(&newsMux);
+    memcpy(news, tmp, sizeof tmp); newsN = n; snprintf(newsSrc, sizeof newsSrc, "%s", (const char*)(b["source"] | "News"));
+    portEXIT_CRITICAL(&newsMux);
+    newsAt = millis() | 1;
+  }
+  sendJson(r, 200, "{\"ok\":true}");
+}
+
 // ------------------------------------------------------------ Weather (Open-Meteo, cached 10 minutes)
-static String wxKey, wxData; static uint32_t wxAt = 0;
+static String wxData; static uint32_t wxAt = 0;
 static void weather(AsyncWebServerRequest* r) {
   double lat = r->hasParam("lat") ? r->getParam("lat")->value().toDouble() : NAN;
   double lon = r->hasParam("lon") ? r->getParam("lon")->value().toDouble() : NAN;
-  if (isnan(lat) || isnan(lon) || !r->hasParam("lat") || !r->hasParam("lon")) return sendErr(r, 400, "Missing or invalid location.");
-  char key[32]; snprintf(key, sizeof key, "%.2f,%.2f", lat, lon);
-  if (wxKey == key && wxData.length() && millis() - wxAt < 600000) return sendJson(r, 200, wxData);
-  if (!staOK) return sendErr(r, 502, "Couldn't reach the weather service -- the board isn't on your home Wi-Fi yet.");
-  HTTPClient http;
-  char url[160];
-  snprintf(url, sizeof url, "http://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&current_weather=true", lat, lon);
-  http.setTimeout(8000);
-  if (!http.begin(url)) return sendErr(r, 502, "Couldn't reach the weather service.");
-  int code = http.GET();
-  if (code != 200) { http.end(); return sendErr(r, 502, String("Couldn't reach the weather service -- check your internet connection. (") + code + ")"); }
-  JsonDocument j(&psAlloc); JsonDocument f(&psAlloc); f["current_weather"] = true;
-  DeserializationError e = deserializeJson(j, http.getStream(), DeserializationOption::Filter(f));
-  http.end();
-  JsonObject cw = j["current_weather"];
-  if (e || cw.isNull() || !cw["temperature"].is<float>()) return sendErr(r, 502, "Unexpected response from the weather service.");
-  int code2 = cw["weathercode"] | -1;
+  if (r->hasParam("lat") && r->hasParam("lon") && !isnan(lat) && !isnan(lon)) wxRemember(lat, lon);
+  // The weather comes from the hourly fetch (wxTask) or from a browser that fetched it for the
+  // board (POST /api/board/wxdata); answering doesn't go out to the internet itself.
+  if (!curAt || millis() - curAt > 2UL * 3600 * 1000 || isnan(curF)) {
+    if (!histBusy && (!histAt || millis() - histAt > 300000)) histAt = 0;   // fetch soon
+    return sendErr(r, 503, "The board hasn't got the weather yet.");
+  }
   struct W { int c; const char* l; const char* i; };
   static const W wmo[] = {{0,"Clear sky","☀️"},{1,"Mainly clear","\U0001F324️"},{2,"Partly cloudy","⛅"},{3,"Overcast","☁️"},
     {45,"Fog","\U0001F32B️"},{48,"Freezing fog","\U0001F32B️"},{51,"Light drizzle","\U0001F326️"},{53,"Drizzle","\U0001F326️"},
@@ -237,17 +507,32 @@ static void weather(AsyncWebServerRequest* r) {
     {82,"Heavy rain showers","⛈️"},{85,"Light snow showers","\U0001F328️"},{86,"Heavy snow showers","❄️"},
     {95,"Thunderstorm","⛈️"},{96,"Thunderstorm with hail","⛈️"},{99,"Severe thunderstorm","⛈️"}};
   const char* label = "Unknown"; const char* icon = "\U0001F321️";
-  for (auto& w : wmo) if (w.c == code2) { label = w.l; icon = w.i; }
-  float t = cw["temperature"];
-  JsonDocument out(&psAlloc);
-  out["tempC"] = (int)lroundf(t); out["tempF"] = (int)lroundf(t * 9 / 5 + 32);
-  out["condition"] = label; out["icon"] = icon; out["isDay"] = (cw["is_day"] | 0) != 0;
-  wxData = ""; serializeJson(out, wxData); wxKey = key; wxAt = millis();
-  sendJson(r, 200, wxData);
+  for (auto& w : wmo) if (w.c == curCode) { label = w.l; icon = w.i; }
+  if (curCode <= 1 && !curDay) icon = "\U0001F319";                          // clear at night: the moon
+  JsonDocument out;
+  out["tempF"] = (int)lroundf(curF); out["tempC"] = (int)lroundf((curF - 32) * 5 / 9);
+  out["condition"] = label; out["icon"] = icon; out["isDay"] = curDay;
+  sendDoc(r, out);
+}
+// A browser that fetched the weather (over https, which it can and the old board code couldn't)
+// hands it to the board: {lat, lon, place, time:[unix...], temp:[°F...], now:{f, code, day}}
+static void wxPush(AsyncWebServerRequest* r) {
+  JsonDocument b(&psAlloc);
+  if (!parseBody(r, b)) return sendErr(r, 400, "Invalid request");
+  wxOpen();
+  float la = b["lat"] | NAN, lo = b["lon"] | NAN;
+  if (!wxManual && !isnan(la) && !isnan(lo) && (isnan(wxLat) || fabsf(wxLat - la) > 0.05f || fabsf(wxLon - lo) > 0.05f)) {
+    wxLat = la; wxLon = lo; wxp.putFloat("lat", wxLat); wxp.putFloat("lon", wxLon);
+    String pl = b["place"] | ""; if (pl.length()) { wxPlace = pl + " (from your internet address)"; wxp.putString("place", wxPlace); }
+  }
+  if (b["time"].is<JsonArray>() && storeHours(b["time"], b["temp"])) { histAt = millis() | 1; wxErr = ""; }
+  if (!b["now"]["f"].isNull()) { curF = b["now"]["f"]; curCode = b["now"]["code"] | -1; curDay = (b["now"]["day"] | 1) != 0; curAt = millis() | 1; }
+  sendJson(r, 200, "{\"ok\":true}");
 }
 
 // ------------------------------------------------------------ router
 bool handleToolsApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m) {
+  if (handleLocationApi(r, url, m)) return true;
   for (int i = 0; COLLECTIONS[i]; i++) {
     String base = String("/api/") + COLLECTIONS[i];
     if (url == base) return collection(r, COLLECTIONS[i], "", m);

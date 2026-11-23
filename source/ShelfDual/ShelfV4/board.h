@@ -4,9 +4,14 @@
 // Same microSD wiring as Heltec Shelf Lite, so a board wired for that works as-is.
 #pragma once
 
-#define FW_VERSION "1.10.12"
-// SHELF_DUALBOOT: built for a TidyOS Pro dual-boot board (boot menu in the factory slot, The
-// Shelf in the "shelf" slot, TidyOS Pro in "tidyos"). See github.com/CharlesPhillips3/TidyOS-Pro
+#define FW_VERSION "1.19.1"
+// SHELF_DUALBOOT: built for a Tidy Pro Plus dual-boot board (boot menu in the factory slot, The Shelf in the
+// "shelf" slot, TidyOS Pro in "tidyos"): github.com/hardwaremack-prog/Tidy-Pro-Plus. Same microSD wiring as
+// the standalone Shelf (in-line CS 42 ... MISO 39, or CS 4, MISO 6, CLK 47, MOSI 48).
+// Every board's own Wi-Fi has the same fixed address you can bookmark: http://10.1.1.250
+// (phones and laptops that join get 10.1.1.100 and up).
+#define AP_IP           10, 1, 1, 250
+#define AP_DHCP_START   10, 1, 1, 100
 // SHELF_ESP32: a plain ESP32 dev board (NodeMCU-32S / ESP32-DevKitC, ESP32-D0WD, 4 MB flash):
 // no LoRa radio, no battery, and a screen only if you add one (SSD1306 on GPIO 21/22).
 #if defined(SHELF_ESP32)
@@ -19,8 +24,6 @@
 // No screen, so it starts on its own Wi-Fi at a fixed address you can bookmark:
 // named after the board (shelf-esp32-xxxx), password theshelf, http://10.1.1.250 (home Wi-Fi can still be set in settings)
 #define DEFAULT_MODE    "hotspot"
-#define AP_IP           10, 1, 1, 250
-#define AP_DHCP_START   10, 1, 1, 100
 #elif defined(SHELF_V3)
 #define BOARD_NAME  "Heltec V3"
 #define BOARD_SHORT "V3"
@@ -44,6 +47,9 @@
 #define OLED_SCL   22
 #define OLED_RST   255    // U8X8_PIN_NONE
 #define OLED_ADDR  0x3C
+#define OLED_INLINE_SDA 27   // a screen plugged straight onto 27 · 14 · 12 · GND (turned around): tried
+#define OLED_INLINE_SCL 14   // if there's none on 21/22, with its power from GPIO 12
+#define OLED_INLINE_VCC 12
 #define PIN_BUTTON 0      // BOOT button
 #define PIN_VEXT   255    // none of these exist here; the code that uses them never runs on this board
 #define PIN_VEXT_R8 255
@@ -74,7 +80,7 @@
 // CLK 40, MISO 39 are four neighbouring J3 pins in the module's own order, so it can plug
 // straight into the header. On the V4 they're shared with the GNSS connector: leave that empty.
 // V4-R8: GPIO 40 switches its screen power, so it keeps the older layout (CS 4, MISO 6, CLK 47, MOSI 48).
-#if (defined(CONFIG_SPIRAM_MODE_OCT) && CONFIG_SPIRAM_MODE_OCT) || defined(SHELF_DUALBOOT)
+#if defined(CONFIG_SPIRAM_MODE_OCT) && CONFIG_SPIRAM_MODE_OCT
 #define SD_CS    4
 #define SD_MISO  6
 #define SD_SCK   47
@@ -86,5 +92,21 @@
 #define SD_SCK   40
 #define SD_MISO  39
 #define SD_PINS  "CS 42, MOSI 41, CLK 40, MISO 39"
+// Also looked for (if there's no card on the pins above): six wires to CS 4, MISO 6, CLK 47,
+// MOSI 48, the R8's layout, which leaves the V4's GNSS connector free for the GPS kit.
+#define SD_ALT_CS   4
+#define SD_ALT_MISO 6
+#define SD_ALT_SCK  47
+#define SD_ALT_MOSI 48
+#if !defined(SHELF_V3)
+// The V4's GNSS connector (Heltec's L76K GPS kit), as in Meshtastic's heltec_v4 variant
+#define HAS_GNSS     1
+#define GNSS_RX      38   // data from the GPS
+#define GNSS_TX      39   // data to the GPS
+#define GNSS_EN      34   // LOW = GPS powered
+#define GNSS_STANDBY 40   // HIGH = awake
+#define GNSS_PPS     41
+#define GNSS_RESET   42   // LOW resets it
+#endif
 #endif
 #endif   // SHELF_ESP32

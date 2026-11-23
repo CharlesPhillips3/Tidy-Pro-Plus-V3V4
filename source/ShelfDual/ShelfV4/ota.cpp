@@ -13,7 +13,7 @@
 // first update to 1.9.0 has to go over USB from the installer page.
 #include "shelf.h"
 #ifdef SHELF_DUALBOOT
-  #define SHELF_OTA_BASE "https://charlesphillips3.github.io/TidyOS-Pro/shelf/"      // dual-boot builds live with TidyOS Pro
+  #define SHELF_OTA_BASE "https://hardwaremack-prog.github.io/Tidy-Pro-Plus/shelf/"   // dual-boot builds live with Tidy Pro Plus
 #else
   #define SHELF_OTA_BASE "https://hardwaremack-prog.github.io/The-Shelf-Heltec-V4900mhzMesh/"
 #endif
@@ -260,7 +260,11 @@ bool handleOtaApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod 
   if (url == "/api/board/update/info") {
     const esp_partition_t* run = esp_ota_get_running_partition();
     const esp_partition_t* next = esp_ota_get_next_update_partition(nullptr);
+#ifdef SHELF_DUALBOOT
+    const esp_partition_t* app0 = shelfPart();          // (ota_0 is TidyOS Pro's slot on a dual-boot board)
+#else
     const esp_partition_t* app0 = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_0, nullptr);
+#endif
     const esp_partition_t* w = wwwPart();
     bool slots = next && next != run;
 #ifdef OTA_VIA_CARD

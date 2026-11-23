@@ -125,7 +125,11 @@ struct StrOut : public Print {
 };
 void sendErr(AsyncWebServerRequest* r, int code, const String& msg);
 void sendDoc(AsyncWebServerRequest* r, JsonDocument& doc, int code = 200);
-void sendFileRanged(AsyncWebServerRequest* r, const String& path, bool download = false);
+void sendFileRanged(AsyncWebServerRequest* r, const String& path, bool download = false, bool immutable = false);
+// Album art and thumbnails: their links carry this number, which changes whenever any of them
+// changes, so browsers can keep the pictures for good and still see a new one (api_files.cpp).
+uint32_t artGen();
+void bumpArtGen();
 void sendJsonFile(AsyncWebServerRequest* r, const String& path);
 // Streams "[" a "," b "," ... "]" from files; each file optionally gets its final
 // byte replaced by `tails[i]` (used to add "read":true to chat messages).
@@ -134,6 +138,7 @@ void sendJsonArrayOfFiles(AsyncWebServerRequest* r, std::vector<String>* paths, 
 // ---------------------------------------------------------------- feature modules
 bool handleFilesApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);
 bool handleToolsApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);
+bool handleLocationApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);
 bool handleMessagingApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);
 bool handleBoardApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);
 bool handleCardApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);   // microSD backup/restore
@@ -165,6 +170,7 @@ void messagingBegin();
 void comsBegin();
 bool handleComsApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);
 bool comsOn();
+bool comsWifiOn();      // Meshed Comms using 2.4 GHz (the Wi-Fi radio has to keep listening)
 extern String comsLastLine; extern uint32_t comsLastAt;
 void messagingLoop();
 void musicMetaLoop();
@@ -181,6 +187,12 @@ bool readOnlyOn();
 void setReadOnly(bool on);
 void adminClear();
 bool canWrite(AsyncWebServerRequest* r);
+bool adminUnlocked(AsyncWebServerRequest* r);
+// locks.cpp: folder locks (a read-only viewing password for chosen shelves and tools)
+void locksBegin();
+bool handleLocksApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);
+bool lockGate(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);
+bool lockBlocksUpload(AsyncWebServerRequest* r);
 bool allowedWhenReadOnly(const String& url, WebRequestMethod m);
 void sendReadOnly(AsyncWebServerRequest* r);
 uint32_t meshNodeId();
@@ -198,6 +210,26 @@ String remoteStatusJson();
 bool remoteBoardCommand(uint8_t cmd, const String& arg, String& out);
 int batteryPercentNow();
 void screenWake();
+void screenShowing(const String& cat, const String& file);
+// api_tools.cpp: outside temperature for the screen (where the board is comes from the Home page's weather)
+#define WX_HOURS 96
+void wxRemember(double lat, double lon);
+bool wxLocation(float& lat, float& lon);
+int wxHistoryCopy(float* out, int max, uint32_t* startUtc);   // hourly °F, oldest first
+void wxHistoryTick();
+void wxFromGps(double lat, double lon);
+// the top news headlines, for the screen
+#define NEWS_MAX 6
+#define NEWS_LEN 140
+void newsTick();
+int newsCopy(char out[][NEWS_LEN], int max, char* src, size_t srcMax);                 // the GPS knows exactly where the board is
+// gps.cpp: Heltec's GPS kit on the V4's GNSS connector
+extern bool sdOnAlt;                                    // the card is on CS 4 / MISO 6 / CLK 47 / MOSI 48
+void gpsBegin(); void gpsTick(); void gpsSleep();
+bool gpsAvailable(); bool gpsFix(); bool gpsRunning(); bool gpsTalking();
+bool gpsScreen(double& lat, double& lon, float& altM, float& kmh, int& sats, int& view);
+bool handleGpsApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m);
+const char* wxStatusText();   // something opened from a shelf: show its name on the screen
 void screenSleep();
 bool screenIsOn();
 

@@ -1,11 +1,10 @@
-#include <esp_ota_ops.h>
-#include <esp_partition.h>
 // =====================================================================
 //  The Shelf for Heltec V4
 //  Runs The Shelf's own web app on a Heltec WiFi LoRa 32 V4, with your
 //  files on a microSD card. Other Shelves on the network see it in Messages.
 // =====================================================================
 #include "shelf.h"
+#include <esp_ota_ops.h>
 #include <WiFi.h>
 #include <ESPmDNS.h>
 #include <DNSServer.h>
@@ -54,16 +53,26 @@ static SPIClass sdSPI(FSPI);
 #endif
 static U8G2_SSD1306_128X64_NONAME_F_HW_I2C oled(U8G2_R0, OLED_RST, OLED_SCL, OLED_SDA);
 static bool oledOK = false, screenOn = true;
-static void oledPower(int save) { if (oledOK) oled.setPowerSave(save); }
+static bool scrAutoSleep = true;                    // sleeps after 5 minutes; false: stays on, cycling clock and info pages
+static int tzMin = 0;
+static bool pwrSave = true;                         // power saving while nobody's using it (setting)
+static volatile uint32_t lastWebAt = 0;             // the last web request, any kind
+static bool slowNow = false;                        // running slow: 80 MHz, Wi-Fi napping between beacons                               // the browser's time zone, minutes east of UTC
+// The screen is drawn by its own task on the other core (see screenTask), so everything that
+// touches it takes this lock first.
+static SemaphoreHandle_t oledLock = nullptr;
+struct OledGuard { OledGuard() { if (oledLock) xSemaphoreTakeRecursive(oledLock, portMAX_DELAY); } ~OledGuard() { if (oledLock) xSemaphoreGiveRecursive(oledLock); } };
+static void oledPower(int save) { if (oledOK) { OledGuard g; oled.setPowerSave(save); } }
 static uint32_t lastActivity = 0;
 static int onlineShelves = 0;
 
 String currentIP() { return staOK ? WiFi.localIP().toString() : WiFi.softAPIP().toString(); }
 
 // ------------------------------------------------------------ OLED
-static bool probeOLED() {
+static bool oledInline = false;
+static bool probeOLED(int sda = OLED_SDA, int scl = OLED_SCL) {
   if (OLED_RST != 255) { pinMode(OLED_RST, OUTPUT); digitalWrite(OLED_RST, LOW); delay(20); digitalWrite(OLED_RST, HIGH); delay(20); }
-  Wire.begin(OLED_SDA, OLED_SCL);
+  Wire.begin(sda, scl);
   Wire.beginTransmission(OLED_ADDR);
   bool ok = Wire.endTransmission() == 0;
   Wire.end();
@@ -73,13 +82,39 @@ static bool probeOLED() {
 // The V4 powers its screen through a "Vext" switch: GPIO36 on the standard V4,
 // GPIO40 on the V4-R8 (whose GPIO33-37 belong to its PSRAM, so they're never touched
 // in the R8 build). Heltec's docs disagree on the switch's polarity, so try both.
-static bool tryVext(int pin, int level) { pinMode(pin, OUTPUT); digitalWrite(pin, level); delay(60); return probeOLED(); }
+static int vextPin = -1, vextOnLevel = LOW;      // what powers the screen (and the V4's GNSS connector)
+static bool tryVext(int pin, int level) {
+  pinMode(pin, OUTPUT); digitalWrite(pin, level); delay(60);
+  bool ok = probeOLED();
+  if (ok) { vextPin = pin; vextOnLevel = level; }
+  return ok;
+}
 
 static void powerOLED() {
 #if defined(SHELF_ESP32)
   oledOK = probeOLED();             // a screen is optional here: no screen, no drawing
+#ifdef OLED_INLINE_VCC
+  if (!oledOK) {
+    // In line: the screen plugged straight onto 27 · 14 · 12 · GND (turned around), powered from
+    // GPIO 12 (a screen like this draws ~10-20 mA, well within what a pin can give).
+    gpio_set_drive_capability((gpio_num_t)OLED_INLINE_VCC, GPIO_DRIVE_CAP_3);
+    pinMode(OLED_INLINE_VCC, OUTPUT); digitalWrite(OLED_INLINE_VCC, HIGH);
+    delay(120);
+    oledOK = probeOLED(OLED_INLINE_SDA, OLED_INLINE_SCL);
+    if (oledOK) {
+      u8x8_SetPin(oled.getU8x8(), U8X8_PIN_I2C_DATA, OLED_INLINE_SDA);
+      u8x8_SetPin(oled.getU8x8(), U8X8_PIN_I2C_CLOCK, OLED_INLINE_SCL);
+      Serial.println("[shelf] screen found on the in-line pins (SDA 27, SCL 14, power 12)");
+      oledInline = true;
+    } else {
+      digitalWrite(OLED_INLINE_VCC, LOW); pinMode(OLED_INLINE_VCC, INPUT);   // nothing there
+    }
+  }
+#endif
   if (!oledOK) return;
+  oled.setBusClock(800000);         // 800 kHz: a whole frame in about 13 ms (400 kHz took 26)
   oled.begin();
+  if (oledInline) oled.setDisplayRotation(U8G2_R2);   // it's plugged in turned around: turn the picture to match
   oled.setContrast(200);
   return;
 #endif
@@ -93,6 +128,7 @@ static void powerOLED() {
 #endif
   (void)ok;
   oledOK = true;
+  oled.setBusClock(800000);         // 800 kHz: a whole frame in about 13 ms (400 kHz took 26)
   oled.begin();
   oled.setContrast(200);
 }
@@ -141,6 +177,7 @@ static int batteryPercent() {
 
 static void oledMsg(const char* a, const char* b = "", const char* c = "", const char* d = "") {
   if (!oledOK) return;
+  OledGuard g;
   oled.clearBuffer();
   oled.setFont(u8g2_font_helvB10_tf); oled.drawStr(0, 12, a);
   oled.setFont(u8g2_font_6x10_tf);
@@ -167,26 +204,35 @@ static void drawLine(int y, const String& t) {
   oled.drawStr(span - off, y, t.c_str());
 }
 
-static void drawStatus() {
-  scrolling = false;
-  if (!oledOK || !screenOn) return;
-  oled.clearBuffer();
+// A little arrow into the top-right (up) or bottom-right corner, pointing at a button just past
+// the screen's edge, with an optional label (4x6 font, baseline y) to its left.
+static void arrowTo(bool up, const char* label, int y) {
+  if (up) { oled.drawLine(122, 6, 127, 1); oled.drawHLine(124, 0, 4); oled.drawVLine(127, 0, 4); }
+  else    { oled.drawLine(122, 57, 127, 62); oled.drawHLine(124, 63, 4); oled.drawVLine(127, 60, 4); }
+  if (label) { oled.setFont(u8g2_font_4x6_tf); oled.drawStr(128 - 7 - oled.getStrWidth(label), y, label); }
+}
+
+static void drawStatusPage() {
   // top bar: name, storage, battery
   oled.setFont(u8g2_font_helvB08_tf); oled.drawStr(0, 9, "THE SHELF");
   int x = oled.getStrWidth("THE SHELF") + 3;
-  oled.setFont(u8g2_font_5x7_tf); oled.drawStr(x, 9, BOARD_SHORT);
-  x += oled.getStrWidth(BOARD_SHORT) + 4;
+  oled.setFont(u8g2_font_5x7_tf);
+  if (!oledInline) { oled.drawStr(x, 9, BOARD_SHORT); x += oled.getStrWidth(BOARD_SHORT) + 4; }   // in line: room for "BOOT"
   const char* st = onSD ? "SD" : (comsOn() ? "FL" : "FLASH");
   oled.drawStr(x, 9, st);
+  int barEnd = x + oled.getStrWidth(st);
   if (comsOn()) {                                   // tiny antenna: 900MHz Coms is on
     x += oled.getStrWidth(st) + 4;
     oled.drawVLine(x + 3, 2, 7);
     oled.drawPixel(x + 1, 3); oled.drawPixel(x, 4); oled.drawPixel(x + 1, 5);
-    oled.drawPixel(x + 5, 3); oled.drawPixel(x + 6, 4); oled.drawPixel(x + 5, 5);
+    oled.drawPixel(x + 5, 3); oled.drawPixel(x + 6, 4); oled.drawPixel(x + 5, 5);    barEnd = x + 7;
   }
   int pct = batteryPercent();
   oled.setFont(u8g2_font_4x6_tf);
-  if (pct < 0) {
+  if (oledInline) {
+    // the screen plugged in line sits right beside the buttons: BOOT is past its top-right corner
+    arrowTo(true, barEnd + 4 < 128 - 7 - oled.getStrWidth("BOOT") ? "BOOT" : nullptr, 8);
+  } else if (pct < 0) {
     oled.drawStr(128 - oled.getStrWidth("USB"), 8, "USB");
   } else {
     String t = String(pct) + "%";
@@ -202,14 +248,22 @@ static void drawStatus() {
   oled.setFont(u8g2_font_6x10_tf);
   String bottom;
   if (staOK) {
-    oled.drawStr(0, 24, (hostName + ".local").c_str());
+    String h = hostName + ".local";                 // a long name: smaller letters, so it all fits
+    if (oled.getStrWidth(h.c_str()) > 128) oled.setFont(u8g2_font_5x7_tf);
+    oled.drawStr(0, 24, h.c_str());
+    oled.setFont(u8g2_font_6x10_tf);
     String l2 = onlineShelves > 0 ? String(onlineShelves) + (onlineShelves == 1 ? " Shelf nearby" : " Shelves nearby")
                                   : String("Wi-Fi ") + WiFi.RSSI() + " dBm";
     if (comsLastAt && millis() - comsLastAt < 15000) l2 = comsLastLine;
     drawLine(35, l2);
     bottom = "IP " + WiFi.localIP().toString();
   } else if (apActive) {
-    oled.drawStr(0, 24, ((firstSetup ? "Join " : "Wi-Fi ") + ownSSID).c_str());
+    {   // the board's own network: its name is the board's name, so make it fit the width
+      String w = (firstSetup ? "Join " : "WiFi ") + ownSSID;
+      if (oled.getStrWidth(w.c_str()) > 128) oled.setFont(u8g2_font_5x7_tf);
+      oled.drawStr(0, 24, w.c_str());
+      oled.setFont(u8g2_font_6x10_tf);
+    }
     String l2 = ownPass.length() >= 8 ? "Password: " + ownPass : String("Open network");
     if (!firstSetup && comsLastAt && millis() - comsLastAt < 15000) l2 = comsLastLine;
     drawLine(35, l2);
@@ -226,13 +280,34 @@ static void drawStatus() {
     String fr = fmtShort(storeTotal - storeUsed) + " free";
     oled.drawStr(128 - oled.getStrWidth(fr.c_str()), 46, fr.c_str());
   }
+  // what the two buttons do (EN/RST is a hardware reset: it restarts the board the moment it's pressed)
+  if (oledInline) {                                 // EN is past the bottom-right corner
+    oled.setFont(u8g2_font_5x7_tf);                 // a bit smaller, to leave room for "EN restart"
+    int bw = oled.getStrWidth(bottom.c_str());
+    oled.drawStr(0, 62, bottom.c_str());
+    oled.setFont(u8g2_font_4x6_tf);
+    const char* l = bw + 4 < 128 - 7 - oled.getStrWidth("EN restart") ? "EN restart" : bw + 4 < 128 - 7 - oled.getStrWidth("EN") ? "EN" : nullptr;
+    arrowTo(false, l, 62);
+    return;
+  }
+  oled.setFont(u8g2_font_4x6_tf);
+#if defined(SHELF_ESP32)
+  const char* keys = "EN restart \xC2\xB7 BOOT 1x hold 2x next";
+#else
+  const char* keys = "RST restart \xC2\xB7 PRG 1x hold 2x next";
+#endif
+  oled.drawUTF8((128 - oled.getUTF8Width(keys)) / 2, 53, keys);
   oled.setFont(u8g2_font_6x10_tf);
   oled.drawStr(0, 62, bottom.c_str());
-  oled.sendBuffer();
 }
+#include "screen_pages.h"
 
 // ------------------------------------------------------------ storage
+bool sdOnAlt = false;                       // the card is on the second layout (GNSS connector free)
 static void setupStorage() {
+#ifdef SD_ALT_CS
+  pinMode(SD_ALT_CS, INPUT_PULLUP);          // keeps a card on the other layout deselected meanwhile
+#endif
   sdSPI.begin(SD_SCK, SD_MISO, SD_MOSI, SD_CS);
   // Bare microSD breakouts have no pull-up resistors. Without one the card's data-out line
   // floats while it's busy, and the board can misread "busy" or "write accepted", so writes
@@ -256,6 +331,18 @@ static void setupStorage() {
     else if (SD.begin(SD_CS_INLINE, sdSPI, 4000000, "/sd", 10)) onSD = true;
     if (onSD && SD.cardType() == CARD_NONE) { SD.end(); onSD = false; }
     if (onSD) Serial.println("[shelf] microSD found on the in-line wiring (MOSI 5, CS 17)");
+  }
+#endif
+#ifdef SD_ALT_CS
+  // Six wires to CS 4, MISO 6, CLK 47, MOSI 48 (leaves the GNSS connector free for the GPS kit)
+  if (!onSD) {
+    SD.end(); sdSPI.end();
+    sdSPI.begin(SD_ALT_SCK, SD_ALT_MISO, SD_ALT_MOSI, SD_ALT_CS);
+    for (int pin : {SD_ALT_MISO, SD_ALT_MOSI, SD_ALT_CS}) gpio_pullup_en((gpio_num_t)pin);
+    if (SD.begin(SD_ALT_CS, sdSPI, 10000000, "/sd", 10)) onSD = true;
+    else if (SD.begin(SD_ALT_CS, sdSPI, 4000000, "/sd", 10)) onSD = true;
+    if (onSD && SD.cardType() == CARD_NONE) { SD.end(); onSD = false; }
+    if (onSD) { sdOnAlt = true; Serial.println("[shelf] microSD found on CS 4, MISO 6, CLK 47, MOSI 48"); }
   }
 #endif
   if (onSD) store = &SD;
@@ -299,7 +386,7 @@ static void startAP() {
     dns.start(53, "*", WiFi.softAPIP());
   } else {
     // Own Wi-Fi: hand out NO gateway and NO DNS server. Phones then mark the network
-    // "No Internet Connection", stay joined for The Shelf (192.168.4.1 / name.local),
+    // "No Internet Connection", stay joined for The Shelf (10.1.1.250 / name.local),
     // and keep using cellular data for everything else - texts, iMessage, apps.
     esp_netif_t* ap = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
     if (ap) {
@@ -347,14 +434,24 @@ static void wifiScanTick() {
 #define WAKE_BUTTON "PRG"
 #endif
 static uint32_t sleepAt = 0, sleepMinutes = 0;
+static bool poweringOff = false;            // "Power off": deep sleep with everything it can switch off
 static void goDeepSleep() {
   Serial.printf("[shelf] deep sleep %s\n", sleepMinutes ? (String("for ") + sleepMinutes + " min or until " WAKE_BUTTON).c_str() : "until " WAKE_BUTTON);
-  if (sleepMinutes) oledMsg("Deep sleep", "Press " WAKE_BUTTON " to wake", (String("or in ") + sleepMinutes + " min").c_str());
+  if (poweringOff) oledMsg("Powered off", "Press " WAKE_BUTTON " to", "turn it back on");
+  else if (sleepMinutes) oledMsg("Deep sleep", "Press " WAKE_BUTTON " to wake", (String("or in ") + sleepMinutes + " min").c_str());
   else oledMsg("Deep sleep", "Press " WAKE_BUTTON " to wake");
   delay(1500);
   oledPower(1);
   comsSleep();
+  gpsSleep();
   ledOff();
+  if (vextPin >= 0) {                        // the screen's power (and the GNSS connector's) off, and kept off
+    digitalWrite(vextPin, vextOnLevel == LOW ? HIGH : LOW);
+    gpio_hold_en((gpio_num_t)vextPin); gpio_deep_sleep_hold_en();
+  }
+#ifdef OLED_INLINE_VCC
+  if (oledInline) { digitalWrite(OLED_INLINE_VCC, LOW); gpio_hold_en((gpio_num_t)OLED_INLINE_VCC); gpio_deep_sleep_hold_en(); }
+#endif
   WiFi.disconnect(true); WiFi.mode(WIFI_OFF);
   if (onSD) SD.end();
   Serial.flush();
@@ -364,10 +461,67 @@ static void goDeepSleep() {
   esp_deep_sleep_start();
 }
 
+// ------------------------------------------------------------ keeping the home Wi-Fi
+// The ESP32's own reconnecting sometimes gives up after a dropout (a router restart, a weak
+// moment). If the home Wi-Fi has been gone for 30 seconds, join it again by hand, every 30 s;
+// after 15 minutes without it (when it had been working), restart the board.
+static bool staEverOK = false;
+static uint32_t staLostAt = 0, staRetryAt = 0;
+static void wifiWatch(uint32_t now) {
+  if (staOK) { staEverOK = true; staLostAt = 0; return; }
+  if (!wifiSSID.length() || hotspotMode || firstSetup) return;
+  if (!staLostAt) { staLostAt = now | 1; staRetryAt = now + 30000; return; }
+  if ((int32_t)(now - staRetryAt) >= 0) {
+    staRetryAt = now + 30000;
+    Serial.println("[shelf] joining the home Wi-Fi again");
+    WiFi.disconnect(false, false);
+    WiFi.begin(wifiSSID.c_str(), wifiPass.c_str());
+  }
+  if (staEverOK && now - staLostAt > 15UL * 60 * 1000) { oledMsg("Wi-Fi lost", "Restarting..."); delay(500); ESP.restart(); }
+}
+
+// ------------------------------------------------------------ power saving
+// Nobody using the board (no web requests for 90 seconds, nothing streaming or updating):
+// the CPU drops from 240 to 80 MHz, and on a home Wi-Fi the Wi-Fi radio sleeps between the
+// router's beacons (not while Coms is on: boards talking over 2.4 GHz need it listening).
+// The first request brings full speed straight back. On its own Wi-Fi the radio has to stay
+// awake for the phones joined to it, so there it's the CPU only.
+static bool wifiNap = false;
+static void powerTick(uint32_t now) {
+  bool busy = !pwrSave || now - lastWebAt < 90000 || streamsActive > 0 || otaPercent >= 0;
+  if (busy && slowNow) {
+    setCpuFrequencyMhz(240);
+    slowNow = false;
+  } else if (!busy && !slowNow) {
+    setCpuFrequencyMhz(80);
+    slowNow = true;
+  }
+  bool nap = slowNow && staOK && !apActive && !comsWifiOn();   // (Meshed Comms on 900 MHz only: the Wi-Fi can still nap)
+  // napping: the radio sleeps between the router's beacons and wakes for every one, so it still
+  // hears everything addressed to it; full speed again with the first request
+  // (WIFI_PS_MAX_MODEM, which skips beacons, made the board miss the network's "who has this
+  // address?" broadcasts, so after a while nobody could reach it until it was reset)
+  if (nap != wifiNap) { WiFi.setSleep(nap ? WIFI_PS_MIN_MODEM : WIFI_PS_NONE); wifiNap = nap; }
+}
+// A battery run flat hurts it: at 5% or less for two minutes (on battery, not USB: charging lifts
+// it straight back up), the board says so and switches itself off like Power off does (Wi-Fi,
+// radios, GPS, screen), waking every hour to look again and going straight back to sleep until
+// it's charged past 10%. PRG starts it any time.
+static uint32_t lowSince = 0;
+static void lowBatteryTick(uint32_t now) {
+  int pct = batteryPercent();
+  if (pct < 0 || pct > 5) { lowSince = 0; return; }
+  if (!lowSince) { lowSince = now | 1; return; }
+  if (now - lowSince < 120000) return;
+  oledMsg("Battery low (5%)", "Switching off", "Charge it, then press", WAKE_BUTTON " to start");
+  delay(3000);
+  poweringOff = true; sleepMinutes = 60; goDeepSleep();
+}
+
 static void onJoined() {
   staOK = true;
   Serial.printf("[shelf] joined \"%s\" as %s\n", wifiSSID.c_str(), WiFi.localIP().toString().c_str());
-  WiFi.setSleep(false);
+  WiFi.setSleep(false); wifiNap = false;            // power saving looks again on the next loop
   startMDNS();
   {                                                 // remember its address at home: the settings page links to it
     String ip = WiFi.localIP().toString();          // after switching from its own Wi-Fi back to the home one
@@ -390,15 +544,16 @@ static String sanitizeHost(String h) {
 // Board settings for the little setup page at /board/
 bool handleBoardApi(AsyncWebServerRequest* r, const String& url, WebRequestMethod m) {
   if (!url.startsWith("/api/board/")) return false;
+  if (handleLocationApi(r, url, m)) return true;   // (its own GET and POST; api_tools.cpp)
   if (url == "/api/board/info") {
     String s = String("{\"board\":\"") + BOARD_NAME + "\",\"fw\":\"" FW_VERSION "\",\"storage\":\"" + (onSD ? "microSD card" : "board flash") +
       "\",\"total\":" + String((double)storeTotal, 0) + ",\"used\":" + String((double)storeUsed, 0) + ",\"host\":\"" + hostName +
       "\",\"ip\":\"" + currentIP() + "\",\"ssid\":\"" + jsonEsc(staOK ? WiFi.SSID() : String("")) + "\",\"rssi\":" + (staOK ? WiFi.RSSI() : 0) +
       ",\"ap\":" + (apActive ? "true" : "false") + ",\"apName\":\"" + jsonEsc(ownSSID) + "\",\"hotspot\":" + (hotspotMode ? "true" : "false") +
       ",\"setup\":" + (firstSetup ? "true" : "false") + ",\"homeSsid\":\"" + jsonEsc(wifiSSID) + "\",\"homeIp\":\"" + prefs.getString("homeip", "") + "\",\"apOpen\":" + (ownPass.length() >= 8 ? "false" : "true") + ",\"apPass\":\"" + jsonEsc(ownPass) + "\"" +
-      ",\"clients\":" + (apActive ? WiFi.softAPgetStationNum() : 0) + ",\"timeSet\":" + (time(nullptr) > 1700000000 ? "true" : "false") +
+      ",\"clients\":" + (apActive ? WiFi.softAPgetStationNum() : 0) + ",\"timeSet\":" + (time(nullptr) > 1700000000 ? "true" : "false") + ",\"tz\":" + tzMin + ",\"scrSleep\":" + (scrAutoSleep ? "true" : "false") + ",\"pwrSave\":" + (pwrSave ? "true" : "false") + ",\"cpuMhz\":" + getCpuFrequencyMhz() + ",\"temp\":" + String(temperatureRead(), 1) +
       ",\"uptime\":" + (millis() / 1000) +
-      ",\"sdPins\":\"" SD_PINS "\",\"sdRetries\":" + String(sdRetries) + ",\"sdFailures\":" + String(sdFailures) + ",\"heap\":" + ESP.getFreeHeap() + ",\"psram\":" + ESP.getPsramSize() + "}";
+      ",\"sdPins\":\"" + String(sdOnAlt ? "CS 4, MISO 6, CLK 47, MOSI 48" : SD_PINS) + "\",\"gps\":" + (gpsAvailable() ? "true" : "false") + ",\"sdRetries\":" + String(sdRetries) + ",\"sdFailures\":" + String(sdFailures) + ",\"heap\":" + ESP.getFreeHeap() + ",\"psram\":" + ESP.getPsramSize() + "}";
     sendJson(r, 200, s); return true;
   }
   if (url == "/api/board/wifi/scan") {
@@ -438,7 +593,22 @@ bool handleBoardApi(AsyncWebServerRequest* r, const String& url, WebRequestMetho
       struct timeval tv = {(time_t)(ms / 1000), (suseconds_t)((ms % 1000) * 1000)};
       settimeofday(&tv, nullptr);
     }
+    int tz = b["tz"] | 9999;
+    if (tz >= -14 * 60 && tz <= 14 * 60 && tz != tzMin) { tzMin = tz; prefs.putInt("tz", tz); }
     sendJson(r, 200, String("{\"ok\":true,\"timeSet\":") + (time(nullptr) > 1700000000 ? "true" : "false") + "}"); return true;
+  }
+  if (url == "/api/board/showing") {          // {cat, name}: a picture is on screen in the slideshow
+    String cat = b["cat"] | "", name = b["name"] | "";
+    if (cat == "Pictures" && name.length() && name.length() < 120 && name.indexOf('/') < 0) screenShowing(cat, name);
+    sendJson(r, 200, "{\"ok\":true}"); return true;
+  }
+  if (url == "/api/board/powersave") {        // {on:true}: slow down while nobody's using it
+    pwrSave = b["on"] | true; prefs.putBool("pwrsave", pwrSave);
+    sendJson(r, 200, String("{\"ok\":true,\"pwrSave\":") + (pwrSave ? "true" : "false") + "}"); return true;
+  }
+  if (url == "/api/board/screen") {           // {sleep:true}: the screen sleeps after 5 minutes; false: stays on
+    scrAutoSleep = b["sleep"] | false; prefs.putBool("scrsleep", scrAutoSleep); screenWake();
+    sendJson(r, 200, String("{\"ok\":true,\"scrSleep\":") + (scrAutoSleep ? "true" : "false") + "}"); return true;
   }
   if (url == "/api/board/settings") {
     String h = sanitizeHost(b["host"] | "");
@@ -454,6 +624,10 @@ bool handleBoardApi(AsyncWebServerRequest* r, const String& url, WebRequestMetho
     if (mins < 0 || mins > 7L * 24 * 60) { sendErr(r, 400, "Pick up to a week."); return true; }
     sleepMinutes = (uint32_t)mins; sleepAt = millis() + 1500;
     sendJson(r, 200, String("{\"ok\":true,\"minutes\":") + mins + "}"); return true;
+  }
+  if (url == "/api/board/poweroff") {        // off until the button is pressed (or EN/RST, or the power plugged in again)
+    poweringOff = true; sleepMinutes = 0; sleepAt = millis() + 1500;
+    sendJson(r, 200, "{\"ok\":true}"); return true;
   }
   if (url == "/api/board/reboot") { sendJson(r, 200, "{\"ok\":true}"); rebootSoon = true; return true; }
   return false;
@@ -530,18 +704,22 @@ class ShelfHandler : public AsyncWebHandler {
   }
 
   void handleUpload(AsyncWebServerRequest* r, const String& fn, size_t index, uint8_t* data, size_t len, bool final) override {
-    if (!canWrite(r)) return;               // read-only: handleRequest answers 403
+    lastWebAt = millis();
+    if (!canWrite(r) || lockBlocksUpload(r)) return;   // read-only, or a locked shelf: handleRequest answers 403
     handleUploadPart(r, fn, index, data, len, final);
   }
 
   void handleRequest(AsyncWebServerRequest* r) override {
     // (web requests no longer keep the screen awake: an open page polls all night)
+    lastWebAt = millis();                   // someone's using it: full speed (see powerTick)
     const String& url = r->url();
     WebRequestMethod m = (WebRequestMethod)r->method();
     if (m == HTTP_OPTIONS) { r->send(204); return; }
     Body* b = bodyOf(r);
     if (b && b->tooBig) { sendErr(r, 413, "That's too big for the board to take in one go."); cleanup(r); return; }
     if (handleAdminApi(r, url, m)) { cleanup(r); return; }
+    if (handleLocksApi(r, url, m)) { cleanup(r); return; }
+    if (lockGate(r, url, m)) { cleanup(r); return; }   // a locked folder: viewing password, and read-only
     // read-only mode: only looking, playing and chatting get through until write mode is unlocked
     if (!allowedWhenReadOnly(url, m) && !canWrite(r)) { sendReadOnly(r); cleanup(r); return; }
 
@@ -553,7 +731,7 @@ class ShelfHandler : public AsyncWebHandler {
     }
     try {
     if (serveContent(r, url)) return;
-    bool done = handleOtaApi(r, url, m) || handleBtApi(r, url, m) || handleThumbImportApi(r, url, m) || handleCardApi(r, url, m) || handleBoardApi(r, url, m) || handleComsApi(r, url, m) || handleMessagingApi(r, url, m) || handleFilesApi(r, url, m) || handleToolsApi(r, url, m);
+    bool done = handleGpsApi(r, url, m) || handleOtaApi(r, url, m) || handleBtApi(r, url, m) || handleThumbImportApi(r, url, m) || handleCardApi(r, url, m) || handleBoardApi(r, url, m) || handleComsApi(r, url, m) || handleMessagingApi(r, url, m) || handleFilesApi(r, url, m) || handleToolsApi(r, url, m);
     if (!done) sendErr(r, 404, "Not found");
     } catch (...) {
       // out of memory part-way through (a big list on a board without PSRAM): say so, keep running
@@ -586,11 +764,15 @@ static void setupServer(AsyncWebServer& s) {
 }
 
 // ------------------------------------------------------------ button
-// short press: wake the screen (it sleeps after 5 minutes).
+// short press: wake the screen; when it's on, one press stops the pages turning (another starts them
+// again), two quick presses show the next page.
 // hold 6 s, then let go: forget Wi-Fi.  keep holding to 12 s: clear the admin password.
-static uint32_t btnDownAt = 0; static bool btnDown = false;
+static uint32_t btnDownAt = 0, tapAt = 0; static bool btnDown = false;
 static void handleButton() {
   bool down = digitalRead(PIN_BUTTON) == LOW; uint32_t now = millis();
+  if (tapAt && !down && now - tapAt >= 450) {       // just the one press: keep this page on for 30 seconds
+    tapAt = 0; pageHeld = !pageHeld; holdNoteAt = now | 1; screenWake();
+  }
   if (down && !btnDown) { btnDown = true; btnDownAt = now; }
   uint32_t held = now - btnDownAt;
   if (down && held > 1500) {
@@ -617,7 +799,11 @@ static void handleButton() {
 #endif
       delay(1200); ESP.restart();
     }
-    if (held < 800 && !screenOn) { screenOn = true; oledPower(0); }
+    if (held < 800) {
+      if (!screenOn) { screenOn = true; oledPower(0); }
+      else if (tapAt && now - tapAt < 450) { tapAt = 0; nextPageNow = true; }   // two quick presses: next page
+      else tapAt = now | 1;                                                    // one: wait to see if a second comes
+    }
   }
 }
 
@@ -666,12 +852,22 @@ bool remoteBoardCommand(uint8_t cmd, const String& arg, String& out) {
 }
 
 // ------------------------------------------------------------ setup / loop
+static void screenTask(void*);
 void setup() {
   Serial.begin(115200);
 #ifdef SHELF_DUALBOOT
   // dual boot: the next restart goes back to the boot menu (TidyBoot)
   if (const esp_partition_t* menu = esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_FACTORY, "menu"))
     esp_ota_set_boot_partition(menu);
+#endif
+  oledLock = xSemaphoreCreateRecursiveMutex();
+  gpio_deep_sleep_hold_dis();                 // let go of pins held through a power-off
+#if defined(SHELF_ESP32)
+  gpio_hold_dis((gpio_num_t)OLED_INLINE_VCC);
+#elif CONFIG_SPIRAM_MODE_OCT
+  gpio_hold_dis((gpio_num_t)PIN_VEXT_R8);
+#else
+  gpio_hold_dis((gpio_num_t)PIN_VEXT);
 #endif
   // Unzipping a big game or listing a huge shelf can keep the web task busy for a while;
   // don't let core 0's idle watchdog reset the board over it.
@@ -682,6 +878,12 @@ void setup() {
   oledMsg("THE SHELF", BOARD_NAME, "Starting...");
   ledBegin();
 
+  readBattery();                                    // still flat after waking from a low-battery sleep? sleep on
+  int bootPct = batteryPercent();
+  if (bootPct >= 0 && bootPct < 10 && esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_TIMER) {
+    oledMsg("Battery low", "Charge it, then press", WAKE_BUTTON " to start"); delay(2000);
+    poweringOff = true; sleepMinutes = 60; goDeepSleep();
+  }
   prefs.begin("shelf", false);
   uint64_t mac = ESP.getEfuseMac();
   char tag[5]; snprintf(tag, sizeof tag, "%02x%02x", (uint8_t)(mac >> 32), (uint8_t)(mac >> 40));
@@ -695,11 +897,16 @@ void setup() {
   // it's been renamed to), so every board on the air is its own network.
   ownSSID = hostName;
   ownPass = prefs.getString("appass", AP_PASS);
+  tzMin = prefs.getInt("tz", 0);
+  scrAutoSleep = prefs.getBool("scrsleep", true);
+  pwrSave = prefs.getBool("pwrsave", true);
   firstSetup = !hotspotMode && !wifiSSID.length();
   adminBegin();
+  locksBegin();
 
   if (!LittleFS.begin(false, "/www", 10, "www")) oledMsg("Web app missing", "Re-flash from the", "installer page");
   setupStorage();
+  gpsBegin();                 // (after the card: they may share pins)
   refreshStats();
 
   WiFi.persistent(false);
@@ -724,6 +931,7 @@ void setup() {
   comsBegin();
   markMusicDirty();
   lastActivity = millis();
+  xTaskCreatePinnedToCore(screenTask, "screen", 6144, nullptr, 1, nullptr, 0);
 }
 
 int onlinePeerCount();
@@ -732,11 +940,17 @@ void loop() {
   uint32_t now = millis();
   if (apActive) dns.processNextRequest();
   if (!staOK && WiFi.status() == WL_CONNECTED) { onJoined(); apOffAt = now + 90000; }
-  if (staOK && WiFi.status() != WL_CONNECTED) staOK = false;
+  if (staOK && WiFi.status() != WL_CONNECTED) { staOK = false; Serial.println("[shelf] lost the home Wi-Fi"); }
+  wifiWatch(now);
   if (apActive && apOffAt && now > apOffAt && staOK && !hotspotMode) { stopAP(); apOffAt = 0; }
   if (rebootSoon) { rebootSoon = false; rebootAt = now + 1500; }
   if (rebootLaterAt && (int32_t)(now - rebootLaterAt) >= 0) { rebootLaterAt = 0; rebootAt = now; }
   if (sleepAt && (int32_t)(now - sleepAt) >= 0) { sleepAt = 0; goDeepSleep(); }
+  powerTick(now);
+  gpsTick();
+  wxHistoryTick();
+  newsTick();
+  lowBatteryTick(now);
   if (rebootAt && now > rebootAt) { oledMsg("Restarting..."); delay(200); ESP.restart(); }
 
   handleButton();
@@ -750,7 +964,7 @@ void loop() {
   if (now - lastHeapLog > 15000) { lastHeapLog = now; Serial.printf("[shelf] heap free %u, largest block %u, lowest %u\n", ESP.getFreeHeap(), ESP.getMaxAllocHeap(), ESP.getMinFreeHeap()); }
 #endif
 
-  if (screenOn && now - lastActivity > 300000 && !btnDown) { screenOn = false; oledPower(1); }
+  if (scrAutoSleep && screenOn && now - lastActivity > 300000 && !btnDown && !nowPlayingFresh()) { screenOn = false; oledPower(1); }
   static uint32_t lastDraw = 0;
   static uint32_t lastBatt = 0;
   if (lastBatt == 0 || now - lastBatt > 10000) { readBattery(); lastBatt = now; }
@@ -760,6 +974,23 @@ void loop() {
       char b[24]; snprintf(b, sizeof b, "%s %d%%", otaWhat == 'w' ? "Web app" : "Firmware", otaPercent);
       oledMsg("UPDATING", b, "Don't unplug"); otaShown = otaPercent; lastDraw = now;
     }
-  } else if (!btnDown && now - lastDraw > (scrolling ? 200u : 1000u)) { otaShown = -1; onlineShelves = onlinePeerCount(); drawStatus(); lastDraw = now; }
+  } else otaShown = -1;                                     // (the pages are drawn by screenTask)
   delay(5);
+}
+
+// The screen's pages, drawn on core 0 by a task of their own: the web server, Meshed Comms and
+// loop() all share core 1, and a busy moment there (a file transfer, a big shelf listing) used
+// to make the second hand and the scrolling text stutter. ~30 frames a second while something
+// moves, 4 a second otherwise.
+static void screenTask(void*) {
+  TickType_t wake = xTaskGetTickCount();
+  for (;;) {
+    if (oledOK && otaPercent < 0 && !btnDown) {
+      onlineShelves = onlinePeerCount();
+      OledGuard g;
+      drawScreen();
+    }
+    vTaskDelayUntil(&wake, pdMS_TO_TICKS(scrolling ? 33 : 250));
+    if (xTaskGetTickCount() - wake > pdMS_TO_TICKS(500)) wake = xTaskGetTickCount();   // (don't race to catch up after a stall)
+  }
 }

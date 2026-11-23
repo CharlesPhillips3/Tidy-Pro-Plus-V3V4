@@ -28,6 +28,13 @@ The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (mad
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
 Version 3.4.14. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
 
+### The Shelf (dual boot) is now 1.19.1
+- The Shelf that's installed next to TidyOS Pro was an old 1.10.12 copy that only looked for the microSD card on
+  CS 4, MISO 6, CLK 47, MOSI 48. It's now the current Shelf for Heltec V4 (1.19.1, from
+  The-Shelf-Heltec-V4900mhzMesh) with the dual-boot changes: it finds the card on the in-line wiring
+  (CS 42, MOSI 41, CLK 40, MISO 39) or on CS 4 / 6 / 47 / 48, and has everything since 1.10 (Opus tags and covers,
+  Meshed File Transfer, the faster screen...). Its updates come from this repo (`shelf/ota`).
+
 ### 3.4.14: free space you can see change
 - The free space is shown to 10 KB (taskbar `flash 3.07M`, Files `3.07 MB free`): it was to 100 KB on the
   taskbar and whole MB in Files, so deleting a photo or a short song didn't change the number.
