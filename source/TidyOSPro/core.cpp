@@ -179,7 +179,8 @@ bool mountInternal()
     mkdir(FLASH_HOME "/Music", 0777);       // ready for songs dropped on the desktop (the Music app looks here
     mkdir(FLASH_HOME "/Pictures", 0777);    // when there's no SD card) and photos
     moveOldFlash();
-    Serial.printf("[TidyOS] board storage: %u KB free of %u KB (shared with The Shelf)\n", (unsigned)((FFat.totalBytes() - FFat.usedBytes()) / 1024), (unsigned)(FFat.totalBytes() / 1024));
+    Serial.printf("[TidyOS] board storage: %u KB free of %u KB (%s)\n", (unsigned)((FFat.totalBytes() - FFat.usedBytes()) / 1024), (unsigned)(FFat.totalBytes() / 1024),
+                  esp_partition_find_first(ESP_PARTITION_TYPE_APP, ESP_PARTITION_SUBTYPE_APP_OTA_1, "shelf") ? "shared with The Shelf" : "TidyOS Pro only");
     return true;
   }
   Serial.println("[TidyOS] the board's storage won't open - using the old 1 MB area");
@@ -331,6 +332,7 @@ static std::vector<uiFrame *> s_minimized;
 static uiControl * s_deskCtl = nullptr;
 static int s_ramX = 330;          // where the RAM text starts on the taskbar
 // free space where files go: the SD card when it's on, otherwise TidyOS Pro's own flash (bar and OLED)
+extern volatile bool gStorageChanged;
 bool storageFree(int64_t & freeB, bool & sd)
 {
   int64_t total = 0, used = 0;
@@ -358,6 +360,8 @@ static void optimizeRam()
   s_optUntil = millis() + 5000;
 }
 static void taskbarRepaint() { if (s_deskCtl) s_deskCtl->repaint(Rect(0, SCREEN_H - 20, SCREEN_W - 1, SCREEN_H - 1)); }
+volatile bool gStorageChanged = false;
+void storageChanged() { gStorageChanged = true; taskbarRepaint(); }   // a file was deleted or added: the bar's free space now
 void taskbarMinimize(uiFrame * f)
 {
   if (std::find(s_minimized.begin(), s_minimized.end(), f) == s_minimized.end()) s_minimized.push_back(f);
@@ -978,12 +982,13 @@ private:
       if (!ramAt || millis() - ramAt >= 20000) { ramAt = millis() | 1; ps = heap_caps_get_free_size(MALLOC_CAP_SPIRAM); in = heap_caps_get_free_size(MALLOC_CAP_INTERNAL); }
       // free storage: the SD card when it's on, otherwise TidyOS's own flash area
       static char st[28] = ""; static uint32_t stAt = 0;
+      if (gStorageChanged) { gStorageChanged = false; stAt = 0; st[0] = 0; }
       if (!st[0] || millis() - stAt >= 4900) {
         stAt = millis();
         int64_t fb = 0; bool onSd = false;
         auto human = [](int64_t n, char * o, size_t m) {
           if (n >= (1LL << 30)) snprintf(o, m, "%u.%uG", (unsigned)(n >> 30), (unsigned)((n % (1LL << 30)) * 10 >> 30));
-          else if (n >= (1LL << 20)) snprintf(o, m, "%u.%uM", (unsigned)(n >> 20), (unsigned)((n % (1LL << 20)) * 10 >> 20));
+          else if (n >= (1LL << 20)) snprintf(o, m, "%u.%02uM", (unsigned)(n >> 20), (unsigned)((n % (1LL << 20)) * 100 >> 20));   // (to 10 KB: a deleted photo shows)
           else snprintf(o, m, "%uK", (unsigned)(n >> 10));
         };
         char h[12];

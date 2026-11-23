@@ -26,7 +26,15 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.13. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.14. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.14: free space you can see change
+- The free space is shown to 10 KB (taskbar `flash 3.07M`, Files `3.07 MB free`): it was to 100 KB on the
+  taskbar and whole MB in Files, so deleting a photo or a short song didn't change the number.
+- Deleting, moving or cleaning up in Files updates the taskbar's free space straight away.
+- Files says when a file couldn't be deleted (open in Music, or a folder that isn't empty) instead of quietly
+  leaving it there.
+- The start-up log says "TidyOS Pro only" for the board storage on the TidyOS-Pro-only layout.
 
 ### 3.4.13: Files: Clean up, and several files at once
 - **Files → Clean up...** looks through all of the board's storage (or the SD card) and shows what can be given

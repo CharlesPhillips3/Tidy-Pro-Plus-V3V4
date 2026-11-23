@@ -1750,6 +1750,7 @@ public:
     char b[110];
     snprintf(b, sizeof(b), "Moved %d file%s to %.50s%s", moved, moved == 1 ? "" : "s", destDir.c_str(), failed ? " - some couldn't be moved (room?)" : "");
     info->setText(b); info->repaint();
+    storageChanged();
   }
 
   void del() {
@@ -1757,17 +1758,21 @@ public:
       if (fl->marked.empty()) { info->setText("Tick some files first, then Delete."); info->repaint(); return; }
       std::string q = "Delete " + std::to_string(fl->marked.size()) + " ticked file" + (fl->marked.size() == 1 ? "" : "s") + "?";
       if (gApp->messageBox("Delete", q.c_str(), "Delete", "Cancel", nullptr, uiMessageBoxIcon::Warning) != uiMessageBoxResult::Button1) return;
-      for (auto & n : fl->marked) remove(joinPath(fl->dir.c_str(), n.c_str()).c_str());
-      fl->marked.clear(); fl->setDir(fl->dir); updateInfo();
+      int bad = 0;
+      for (auto & n : fl->marked) if (remove(joinPath(fl->dir.c_str(), n.c_str()).c_str()) != 0) ++bad;
+      fl->marked.clear(); fl->setDir(fl->dir); updateInfo(); storageChanged();
+      if (bad) gApp->messageBox("Delete", "Some files couldn't be deleted (open in another app, like Music?).", "OK", nullptr, nullptr, uiMessageBoxIcon::Warning);
       return;
     }
     if (selName.empty()) return;
     std::string q = std::string("Delete \"") + selName + "\"?";
     if (gApp->messageBox("Delete", q.c_str(), "Delete", "Cancel", nullptr, uiMessageBoxIcon::Warning) == uiMessageBoxResult::Button1) {
-      if (remove(selPath().c_str()) != 0) rmdir(selPath().c_str());
+      bool gone = remove(selPath().c_str()) == 0 || rmdir(selPath().c_str()) == 0;
+      if (!gone) gApp->messageBox("Delete", "Couldn't delete it. (Is it open in another app, like Music? A folder has to be empty.)", "OK", nullptr, nullptr, uiMessageBoxIcon::Warning);
       selName.clear();
       fl->setDir(fl->dir);
       updateInfo();
+      storageChanged();
     }
   }
 
@@ -1782,7 +1787,7 @@ public:
     } else if (!url.empty())
       snprintf(b, sizeof(b), "Sharing on Wi-Fi: open %s in a browser", url.c_str());
     else if (sd ? FileBrowser::getFSInfo(DriveType::SDCard, 0, &total, &used) : internalFSInfo(total, used))
-      snprintf(b, sizeof(b), "%s   %lld MB free of %lld MB", fl->dir.c_str(), (total - used) >> 20, total >> 20);
+      snprintf(b, sizeof(b), "%s   %.2f MB free of %.1f MB", fl->dir.c_str(), (total - used) / 1048576.0, total / 1048576.0);
     else
       snprintf(b, sizeof(b), "%s", fl->dir.c_str());
     info->setText(b);
@@ -1956,6 +1961,7 @@ public:
       for (auto & p : g[i].paths) { long s2 = fileSize(p.c_str()); if (remove(p.c_str()) == 0) { freed += s2 > 0 ? s2 : 0; ++n; } }
     }
     scan();
+    storageChanged();
     std::string m = "Cleaned up: " + std::to_string(n) + " item" + (n == 1 ? "" : "s") + ", " + sz(freed) + " freed.";
     status->setText(m.c_str()); status->repaint();
     if (FilesApp::inst) ((FilesApp *)FilesApp::inst)->fl->setDir(((FilesApp *)FilesApp::inst)->fl->dir);
