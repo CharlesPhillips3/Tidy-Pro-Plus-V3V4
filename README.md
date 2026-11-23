@@ -26,7 +26,11 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.18. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.19. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.19: no restart while copying songs
+
+* Copying several songs to the board from the browser no longer restarts TidyOS. A fast upload kept core 0 busy without a break, so the task watchdog fired; the file server now takes a short pause every 50 ms.
 
 ### 3.4.18: GPS switch
 

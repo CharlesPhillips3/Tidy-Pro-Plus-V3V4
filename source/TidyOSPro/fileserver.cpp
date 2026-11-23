@@ -230,7 +230,9 @@ static void sendFile(WiFiClient & c, const std::string & path, bool download)
   uint8_t buf[1400];
   long left = to - from + 1;
   size_t n;
+  uint32_t rest = millis();
   while (left > 0 && (n = fread(buf, 1, (size_t)std::min(left, (long)sizeof(buf)), f)) > 0) {
+    if (millis() - rest >= 50) { vTaskDelay(1); rest = millis(); }   // (as in receiveFile)
     if (c.write(buf, n) != n) break;
     gNetTx += n;
     left -= n;
@@ -246,9 +248,12 @@ static void receiveFile(WiFiClient & c, const std::string & path, long len)
   if (!f) { sendErr(c, 500, "Can't write there (is the card full or read-only?)"); return; }
   uint8_t buf[1400];
   long got = 0;
-  uint32_t last = millis();
+  uint32_t last = millis(), rest = millis();
   bool ok = true;
   while (got < len) {
+    // a big upload arriving fast never waits, so give the rest of core 0 (and the watchdog's idle task)
+    // a moment every 50 ms: copying several songs in a row used to trip the task watchdog and restart TidyOS
+    if (millis() - rest >= 50) { vTaskDelay(1); rest = millis(); }
     int av = c.available();
     if (av <= 0) {
       if (!c.connected() || millis() - last > 15000) { ok = false; break; }
@@ -355,7 +360,7 @@ static void serverTask(void *)
     if ((!want || !wifi) && s_listening) { s_srv.end(); s_listening = false; }
     if (s_listening) {
       WiFiClient c = s_srv.available();
-      if (c) { s_lastUse = millis(); handle(c); continue; }
+      if (c) { s_lastUse = millis(); handle(c); vTaskDelay(1); continue; }   // (a breather between files of a batch)
     }
     vTaskDelay((s_listening ? 20 : 500) / portTICK_PERIOD_MS);
   }
