@@ -1064,7 +1064,14 @@ async function fmFolder(sub) {                  // Music / Pictures: on the card
 $('fmGo').onclick = () => fmGo(async () => {
   if (!('serial' in navigator)) throw new Error('Open this page in Chrome or Edge on a computer to copy files over USB.');
   if (!cn.port) { const port = await navigator.serial.requestPort(); await cnOpen(port); await new Promise(r => setTimeout(r, 400)); }
-  fmShow('Asking the board...', 0);
+  // opening the USB port often restarts the board (boot menu, then TidyOS Pro: up to a minute), so keep asking
+  const t0 = Date.now();
+  for (;;) {
+    const s = Math.round((Date.now() - t0) / 1000);
+    fmShow(s < 4 ? 'Asking the board...' : 'Waiting for TidyOS Pro to start (opening the USB port can restart the board)... ' + s + ' s', Math.min(1, s / 90));
+    try { await fmAsk('roots', true, 3000); break; }
+    catch (e) { if (!cn.port || Date.now() - t0 > 90000) throw new Error("The board didn't answer in 90 s. Is TidyOS Pro 3.4.5 or newer running on it (not The Shelf)?"); }
+  }
   await fmRoots(); fmEnable(true);
   await fmOpen(fm.cwd && fm.cwd.startsWith(fm.root) ? fm.cwd : fm.root);
   $('fmStatus').hidden = true;

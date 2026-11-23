@@ -26,7 +26,12 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.19. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.20. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.20: dropped files go straight to Incoming
+
+* Files dropped on the desktop page go into the Incoming folder without a "where should it go?" question. The drop box says "Added to Incoming" with the file name for a few seconds (or "3 added to Incoming").
+* Flasher, Copy files over USB: Connect now waits up to 90 s for TidyOS Pro, because opening the USB port can restart the board. Before, it gave up after 8 s with "The board didn't answer".
 
 ### 3.4.19: no restart while copying songs
 

@@ -112,7 +112,7 @@ void deskFieldFromPage(const char * t)
 }
 
 // files dropped on the page: the page saves them in Incoming (on the SD card, or the board's own storage),
-// then the desktop asks where each one goes
+// then the drop box says they've been added to Incoming
 static portMUX_TYPE s_dropMux = portMUX_INITIALIZER_UNLOCKED;
 static char s_dropQ[8][100];
 static volatile int s_dropW = 0, s_dropR = 0;
@@ -133,43 +133,28 @@ void deskDropped(const char * name)         // one has arrived in SD:/Incoming
   if (s_dropW - s_dropR < 8) { strlcpy(s_dropQ[s_dropW % 8], name, sizeof(s_dropQ[0])); s_dropW++; }
   portEXIT_CRITICAL(&s_dropMux);
 }
-static void deskDropTick()                  // on the desktop's timer: ask where each dropped file goes
+// files dropped on the page land in Incoming: the drop box says so for a few seconds (no questions asked)
+static char s_dropNote[100] = "";
+static int s_dropNoteN = 0;
+static uint32_t s_dropNoteAt = 0;
+static int s_dropNoteSeq = 0;
+static bool dropNoteOn() { return s_dropNoteN && millis() - s_dropNoteAt < 6000; }
+static void deskDropTick()                  // on the desktop's timer
 {
-  static bool asking = false;
-  if (asking || s_dropR == s_dropW) return;
-  char name[100];
-  portENTER_CRITICAL(&s_dropMux);
-  strlcpy(name, s_dropQ[s_dropR % 8], sizeof(name));
-  s_dropR++;
-  portEXIT_CRITICAL(&s_dropMux);
-  asking = true;
-  std::string from = dropDir() + "/" + name;
-  // songs start in the Music folder and photos in Pictures (made if they aren't there yet)
-  std::string root = gSDMounted ? SD_MOUNT : FLASH_HOME, start = root;
-  {
-    std::string n = name; for (auto & c : n) c = tolower(c);
-    size_t dot = n.rfind('.'); std::string e = dot == std::string::npos ? "" : n.substr(dot + 1);
-    const char * sub = (e == "opus" || e == "mp3" || e == "ogg" || e == "m4a" || e == "wav" || e == "flac" || e == "aac") ? "/Music"
-                     : (e == "jpg" || e == "jpeg" || e == "png" || e == "bmp" || e == "gif" || e == "webp" || e == "avif") ? "/Pictures" : nullptr;
-    if (sub) { start = root + sub; mkdir(start.c_str(), 0777); }
+  if (s_dropNoteN && !dropNoteOn()) { s_dropNoteN = 0; s_dropNoteSeq++; }      // (time's up: the box goes back)
+  while (s_dropR != s_dropW) {
+    char name[100];
+    portENTER_CRITICAL(&s_dropMux);
+    strlcpy(name, s_dropQ[s_dropR % 8], sizeof(name));
+    s_dropR++;
+    portEXIT_CRITICAL(&s_dropMux);
+    strlcpy(s_dropNote, name, sizeof(s_dropNote));
+    s_dropNoteN = dropNoteOn() ? s_dropNoteN + 1 : 1;
+    s_dropNoteAt = millis();
+    s_dropNoteSeq++;
+    gStorageChanged = true;
+    Serial.printf("[TidyOS] dropped file added to %s: %s\n", dropDir().c_str(), name);
   }
-  std::string to = askFile((std::string("Where should ") + name + " go?").c_str(), "Put it here", name, start);
-  if (!to.empty() && to != from) {
-    if (fileSize(to.c_str()) >= 0 &&
-        gApp->messageBox("Dropped file", "A file with that name is already there. Replace it?", "Replace", "Keep both", nullptr, uiMessageBoxIcon::Question) == uiMessageBoxResult::Button1)
-      remove(to.c_str());
-    if (fileSize(to.c_str()) >= 0) {                      // keep both: add a number
-      std::string base = to, ext;
-      size_t dot = to.rfind('.'), sl = to.rfind('/');
-      if (dot != std::string::npos && dot > sl) { base = to.substr(0, dot); ext = to.substr(dot); }
-      for (int n = 2; n < 100 && fileSize(to.c_str()) >= 0; ++n) to = base + " (" + std::to_string(n) + ")" + ext;
-    }
-    if (rename(from.c_str(), to.c_str()) != 0)
-      gApp->messageBox("Dropped file", "Couldn't move it - it's still in the Incoming folder.", "OK", nullptr, nullptr, uiMessageBoxIcon::Warning);
-  } else if (to.empty()) {
-    gApp->messageBox("Dropped file", (std::string(name) + " stays in the Incoming folder.").c_str(), "OK", nullptr, nullptr, uiMessageBoxIcon::Info);
-  }
-  asking = false;
 }
 
 static const char * wxText(int c)
@@ -227,9 +212,9 @@ static int deskPanelSig()
 {
   time_t now = time(nullptr);
 #ifdef TIDYOS_PRO
-  return (int)(now / 20) * 7 + s_wxVer;          // every 20 s: the 900 MHz line is live
+  return (int)(now / 20) * 7 + s_wxVer + s_dropNoteSeq * 1009;          // every 20 s: the 900 MHz line is live
 #endif
-  return (int)(now / 60) * 7 + s_wxVer + s_affShown * 100003;
+  return (int)(now / 60) * 7 + s_wxVer + s_affShown * 100003 + s_dropNoteSeq * 1009;
 }
 
 static void drawWorldMap(Canvas * cv, int x0, int y0, time_t now)
@@ -658,8 +643,20 @@ static void drawDeskPanel(Canvas * cv)
     cv->setPenColor(T.text);
     for (int k = bx1; k < bx2; k += 6) { cv->drawLine(k, by1, imin(k + 3, bx2), by1); cv->drawLine(k, by2, imin(k + 3, bx2), by2); }
     for (int k = by1; k < by2; k += 6) { cv->drawLine(bx1, k, bx1, imin(k + 3, by2)); cv->drawLine(bx2, k, bx2, imin(k + 3, by2)); }
-    cv->drawText(&FONT_std_12, bx1 + 6, by1 + 1, "Drop files here");
-    cv->drawText(&FONT_std_12, bx1 + 6, by1 + 14, gSDMounted ? "to the SD card" : "to the board");
+    if (dropNoteOn()) {                                     // just arrived: say where it went
+      char l1[24], l2[100];
+      if (s_dropNoteN > 1) snprintf(l1, sizeof(l1), "%d added to Incoming", s_dropNoteN);
+      else strlcpy(l1, "Added to Incoming", sizeof(l1));
+      strlcpy(l2, s_dropNote, sizeof(l2));
+      while (strlen(l2) > 3 && cv->textExtent(&FONT_std_12, l2) > bx2 - bx1 - 10) { l2[strlen(l2) - 4] = 0; strlcat(l2, "...", sizeof(l2)); }
+      cv->setPenColor(T.accent);
+      cv->drawText(&FONT_std_12, bx1 + 6, by1 + 1, l1);
+      cv->setPenColor(T.text);
+      cv->drawText(&FONT_std_12, bx1 + 6, by1 + 14, l2);
+    } else {
+      cv->drawText(&FONT_std_12, bx1 + 6, by1 + 1, "Drop files here");
+      cv->drawText(&FONT_std_12, bx1 + 6, by1 + 14, gSDMounted ? "to the SD card" : "to the board");
+    }
   }
 #endif
   y += 24;

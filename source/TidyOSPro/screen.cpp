@@ -475,7 +475,7 @@ function dropNext(){var f0=dropQ.shift();if(!f0){return;}
  var nm=f.name.replace(/[\/\\:*?"<>|]/g,'_').replace(/[^\x20-\x7e]/g,'_').slice(0,90),tries=0;
  note('Sending '+nm+' ('+Math.ceil(f.size/1024)+' KB)...');
  (function put(){fetch(mUrl('/api/file?path='+encodeURIComponent(dropDir+nm)),{method:'PUT',body:f}).then(function(r){if(!r.ok)throw r.status;
-   send([16].concat(Array.from(new TextEncoder().encode(nm))));note('Sent '+nm+' - pick a folder on TidyOS.',dropQ.length?0:5000);dropNext();})
+   send([16].concat(Array.from(new TextEncoder().encode(nm))));note('Added '+nm+' to Incoming.',dropQ.length?0:5000);dropNext();})
   .catch(function(e){if(++tries<6&&typeof e!='number'){setTimeout(put,800);return;}   // the board's file server may still be starting
    note('Couldn\'t send '+nm+(typeof e=='number'?' (TidyOS said '+e+')':' (no answer from TidyOS)')+'.',8000);dropNext();});})();});}
 function media(t){var k=t.charAt(0),v=t.substr(2),iv=document.getElementById('iv');
