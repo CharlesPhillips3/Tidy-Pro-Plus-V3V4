@@ -1542,8 +1542,10 @@ static void paradeIcon(Canvas & cv, int i)
   }
 }
 
+void oledBoot(const char * msg, int pct);       // oled.cpp: the same steps on the board's own screen
 static void splash(const char * msg, int percent)
 {
+  oledBoot(msg, percent);
   if (s_barMux) xSemaphoreTake(s_barMux, portMAX_DELAY);
   Canvas cv(s_dc);
   cv.setBrushColor(T.desk);
@@ -1803,6 +1805,11 @@ static void bootChooser()
       else if (want == 99) snprintf(b, sizeof(b), "Waiting for Wi-Fi...   click anything to stop the timer");
       else snprintf(b, sizeof(b), "Booting in %d s   click anything to stop the timer", want);
       bootStatus(cv, b);
+      char o[40];
+      if (want == -1) strlcpy(o, "Start-up switches: waiting for you", sizeof(o));
+      else if (want == 99) strlcpy(o, "Waiting for Wi-Fi...", sizeof(o));
+      else snprintf(o, sizeof(o), "Start-up switches: booting in %d s", want);
+      oledBoot(o, want == 99 || want == -1 ? 10 : 10 + (COUNT - want) * 15 / COUNT);
     }
     cv.waitCompletion();
     delay(50);
@@ -1972,6 +1979,7 @@ void setup()
       updateRun(updStatus);                      // (no room for the task: try it here)
     for (;;) vTaskDelay(pdMS_TO_TICKS(1000));
   }
+  oledBoot("Getting ready...", 2);
   inputBegin();     // Bluetooth first: it needs a big block of RAM
   std::set_new_handler(lowMemoryWait);
   memLog("start");
@@ -1982,6 +1990,7 @@ void setup()
   startDisplay();
   releaseVgaPins();     // no monitor in this edition: free GPIO 19/18/5/... (the in-line SD wiring uses them)
   bootChooser();        // start-up switches (SD card, mesh, status light) before they take any RAM
+  if (gSet.sdOn) oledBoot("Looking for the SD card...", 27);
   if (gSet.sdOn) gSDMounted = mountAnySD();
 #else
   if (gSet.sdOn) gSDMounted = mountAnySD();

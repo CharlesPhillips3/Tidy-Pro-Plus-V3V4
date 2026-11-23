@@ -26,7 +26,11 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.22. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.23. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.23: start-up progress on the board's own screen
+
+* While TidyOS Pro starts, the OLED shows what it's doing with a progress bar: getting ready, waiting for Wi-Fi, the start-up switches countdown, the SD card, the radio, the web screen... until its own pages take over.
 
 ### The Shelf 1.19.5 (dual boot): crash recorder
 

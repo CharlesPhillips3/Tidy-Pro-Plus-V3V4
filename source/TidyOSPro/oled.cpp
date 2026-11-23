@@ -472,7 +472,13 @@ static void oledTask(void *)
 
 // update mode: no pages, just what the updater is doing (so it can be seen without a browser)
 static bool s_statusInit = false;
-void oledStatus(const char * msg, int pct)
+static volatile bool s_pagesOn = false;     // the page task has the screen
+static void oledProgress(const char * title, const char * msg, int pct);
+static bool s_updating = false;
+void oledStatus(const char * msg, int pct) { s_updating = true; oledProgress("UPDATE  TidyOS Pro " TIDYOS_VERSION, msg, pct); }
+// start-up: what TidyOS Pro is doing, with a progress bar, until the OLED's own pages take over
+void oledBoot(const char * msg, int pct) { if (!s_pagesOn && !s_updating) oledProgress("Starting TidyOS Pro " TIDYOS_VERSION, msg, pct); }
+static void oledProgress(const char * title, const char * msg, int pct)
 {
   if (!s_statusInit) {
 #if CONFIG_SPIRAM_MODE_OCT
@@ -486,7 +492,7 @@ void oledStatus(const char * msg, int pct)
   }
   s_oled.clearBuffer();
   s_oled.setFont(u8g2_font_5x8_tr);
-  s_oled.drawStr(0, 7, "UPDATE  TidyOS Pro " TIDYOS_VERSION);
+  s_oled.drawStr(0, 7, title);
   s_oled.drawHLine(0, 9, 128);
   // the message, wrapped over up to 4 lines
   const char * m = msg; int y = 20;
@@ -496,7 +502,7 @@ void oledStatus(const char * msg, int pct)
     s_oled.drawStr(0, y, line); y += 10;
     m += n; while (*m == ' ') ++m;
   }
-  if (pct > 0) { s_oled.drawFrame(0, 56, 128, 8); s_oled.drawBox(2, 58, (pct > 100 ? 100 : pct) * 124 / 100, 4); }
+  if (pct >= 0) { s_oled.drawFrame(0, 56, 128, 8); if (pct > 0) s_oled.drawBox(2, 58, (pct > 100 ? 100 : pct) * 124 / 100, 4); }
   s_oled.sendBuffer();
 }
 
@@ -509,11 +515,14 @@ void oledBegin()
 #endif
   delay(50);
   pinMode(PIN_PRG, INPUT_PULLUP);
-  s_oled.begin();
+  if (!s_statusInit) s_oled.begin();
+  s_statusInit = true;
   s_oled.setContrast(BRIGHT);
+  s_pagesOn = true;
   xTaskCreatePinnedToCore(oledTask, "oled", 8192, nullptr, 1, nullptr, 0);
 }
 #else
 void oledBegin() {}
 void oledStatus(const char *, int) {}
+void oledBoot(const char *, int) {}
 #endif
