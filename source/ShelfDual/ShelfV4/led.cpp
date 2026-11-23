@@ -8,6 +8,13 @@
 
 #if defined(SHELF_ESP32)
 #define LED_PIN 2
+#define HAVE_LED 1
+#elif !(defined(CONFIG_SPIRAM_MODE_OCT) && CONFIG_SPIRAM_MODE_OCT)
+#define LED_PIN 35                // Heltec V3 / V4: the white LED (the V4-R8's GPIO 35 belongs to its PSRAM: no light there)
+#define HAVE_LED 1
+#endif
+
+#ifdef HAVE_LED
 #define LED_CH  6                 // an LEDC channel nothing else uses
 extern "C" volatile uint32_t sdActivityMs;   // libraries/SD/src/sd_diskio.cpp
 static volatile bool webUp = false;

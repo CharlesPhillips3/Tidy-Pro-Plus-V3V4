@@ -4,7 +4,7 @@
 // Same microSD wiring as Heltec Shelf Lite, so a board wired for that works as-is.
 #pragma once
 
-#define FW_VERSION "1.19.3"
+#define FW_VERSION "1.19.4"
 // SHELF_DUALBOOT: built for a Tidy Pro Plus dual-boot board (boot menu in the factory slot, The Shelf in the
 // "shelf" slot, TidyOS Pro in "tidyos"): github.com/hardwaremack-prog/Tidy-Pro-Plus. Same microSD wiring as
 // the standalone Shelf (in-line CS 42 ... MISO 39, or CS 4, MISO 6, CLK 47, MOSI 48).

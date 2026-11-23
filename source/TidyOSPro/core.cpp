@@ -79,6 +79,11 @@ void settingsLoad()
   gSet.neatSize  = s_prefs.getInt("nsize", 1);
 }
 
+void settingsReset()                // every setting back to how it came (PRG held 12 s)
+{
+  s_prefs.clear();
+}
+
 void settingsSave()
 {
   s_prefs.putString("ssid", gSet.ssid);

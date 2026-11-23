@@ -72,6 +72,7 @@ struct Settings {
 };
 extern Settings gSet;
 void settingsLoad();
+void settingsReset();
 void settingsSave();
 
 // ---------------------------------------------------------------- storage

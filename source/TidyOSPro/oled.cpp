@@ -414,7 +414,49 @@ static void oledTask(void *)
       if (swallow) swallow = false;
       else if (now - downAt < LONG_MS && !longDone) { taps++; tapAt = now; }
     }
+    // hold PRG (on any page but the stopwatch): 6 s then let go = forget Wi-Fi,
+    // keep holding to 12 s then let go = every TidyOS setting back to how it came (like The Shelf)
+    bool holding = prg && !swallow && page != P_STOPWATCH && now - downAt >= 2000;
+    if (holding) {
+      uint32_t h = now - downAt;
+      longDone = true;                                       // (no tap when it's let go)
+      if (now - lastDraw >= 200) {
+        char b[32];
+        s_oled.clearBuffer();
+        s_oled.setFont(u8g2_font_6x10_tr);
+        if (h < 6000) {
+          s_oled.drawStr(0, 12, "Forget Wi-Fi?");
+          snprintf(b, sizeof(b), "Keep holding %d s", (int)((6999 - h) / 1000)); s_oled.drawStr(0, 30, b);
+          s_oled.drawStr(0, 46, "Let go to cancel");
+        } else if (h < 12000) {
+          s_oled.drawStr(0, 12, "Let go: forget Wi-Fi");
+          snprintf(b, sizeof(b), "Hold %d s more:", (int)((12999 - h) / 1000)); s_oled.drawStr(0, 30, b);
+          s_oled.drawStr(0, 46, "all settings reset");
+        } else {
+          s_oled.drawStr(0, 12, "Let go: reset ALL");
+          s_oled.drawStr(0, 30, "settings to default");
+          s_oled.drawStr(0, 46, "(files are kept)");
+        }
+        s_oled.sendBuffer();
+        lastDraw = now;
+      }
+    }
+    if (!prg && prgWas && !swallow && page != P_STOPWATCH && now - downAt >= 6000) {
+      bool all = now - downAt >= 12000;
+      s_oled.clearBuffer(); s_oled.setFont(u8g2_font_6x10_tr);
+      s_oled.drawStr(0, 12, all ? "Settings reset" : "Wi-Fi forgotten");
+      s_oled.drawStr(0, 30, "Restarting in");
+      s_oled.drawStr(0, 46, "setup mode...");
+      s_oled.sendBuffer();
+      Serial.printf("[TidyOS] PRG held: %s\n", all ? "every setting back to default" : "forgetting Wi-Fi");
+      if (all) settingsReset();
+      else { gSet.ssid = ""; gSet.pass = ""; settingsSave(); }
+      WiFi.disconnect(true, true);                           // (the Wi-Fi driver's own copy too)
+      delay(1200);
+      ESP.restart();
+    }
     prgWas = prg;
+    if (holding) { vTaskDelay(pdMS_TO_TICKS(20)); continue; }
     if (taps >= 2) {                                         // double tap: next page
       taps = 0; page = (page + 1) % P_COUNT; pageAt = now; redraw = true;
     } else if (taps == 1 && !prg && now - tapAt > TAP_GAP_MS) {   // single tap: hold / roll

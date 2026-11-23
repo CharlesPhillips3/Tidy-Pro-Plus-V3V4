@@ -26,7 +26,12 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.20. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.21. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.21 / The Shelf 1.19.4: PRG hold to reset, Shelf status light
+
+* TidyOS Pro: hold **PRG** (on any OLED page but the stopwatch). The OLED counts down. Let go after 6 s: forget Wi-Fi and restart in setup mode (hotspot at 10.1.1.250). Keep holding to 12 s, then let go: every TidyOS setting goes back to how it came. Files are kept.
+* The Shelf on a V4 (and V3): the white LED is its status light again. It blinks while starting, breathes when ready, flickers while the SD card is busy and flashes fast during an update. (The V4-R8 has no LED free: GPIO 35 belongs to its PSRAM.)
 
 ### The Shelf 1.19.3 (dual boot): the right Shelf again
 
