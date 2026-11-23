@@ -458,17 +458,31 @@ static void gnssTask(void *)
   }
 }
 
+static int hexv(char c) { return c >= '0' && c <= '9' ? c - '0' : c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1; }
+
+// a GNSS module only counts once it sends two whole NMEA sentences with good checksums: a few stray
+// characters (noise, or an in-line SD card's MISO line on GPIO 39) can look like "$GP" by chance
 static bool listenFor(int baud, int rx, int tx, uint32_t ms)
 {
   s_gps.end();
   s_gps.begin(baud, SERIAL_8N1, rx, tx);
-  uint32_t t0 = millis(); int st = 0;
+  uint32_t t0 = millis();
+  char buf[100]; int n = -1; int good = 0;
   while (millis() - t0 < ms) {
     while (s_gps.available()) {
       char c = s_gps.read();
-      if (st == 0 && c == '$') st = 1;
-      else if (st == 1) st = c == 'G' || c == 'B' ? 2 : 0;
-      else if (st == 2) { if (c == 'P' || c == 'N' || c == 'L' || c == 'D') return true; st = 0; }
+      if (c == '$') { n = 0; continue; }
+      if (n < 0) continue;
+      if (c == '\r' || c == '\n') {
+        buf[n] = 0;
+        char * star = strchr(buf, '*');
+        if (star && star - buf >= 5 && buf[0] == 'G' && hexv(star[1]) >= 0 && hexv(star[2]) >= 0) {
+          uint8_t x = 0; for (char * q = buf; q < star; q++) x ^= (uint8_t)*q;
+          if (x == (uint8_t)(hexv(star[1]) * 16 + hexv(star[2])) && ++good >= 2) return true;
+        }
+        n = -1;
+      } else if (n < (int)sizeof(buf) - 1) buf[n++] = c;
+      else n = -1;
     }
     delay(10);
   }
@@ -486,7 +500,7 @@ bool gnssStart()
   delay(300);
   static const int combos[4][3] = { { 9600, GNSS_RX, GNSS_TX }, { 9600, GNSS_TX, GNSS_RX }, { 115200, GNSS_RX, GNSS_TX }, { 115200, GNSS_TX, GNSS_RX } };
   for (auto & c : combos) {
-    if (listenFor(c[0], c[1], c[2], 1300)) {
+    if (listenFor(c[0], c[1], c[2], 2500)) {
       gGnss.present = true; gGnss.baud = c[0]; gGnss.rxPin = c[1];
       s_gnssState = 1;
       Serial.printf("[TidyOS Pro] GNSS found: %d baud, RX on GPIO %d\n", c[0], c[1]);

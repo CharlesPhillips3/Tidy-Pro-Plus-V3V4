@@ -26,7 +26,12 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.15. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.16. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.16: no false GPS, steadier hotspot screen
+
+* A GPS module now only counts once it sends two complete GPS messages with good checksums. Before, stray signals on GPIO 39 (for example an in-line SD card's MISO line) could look like a GPS, and the in-line SD card was then skipped.
+* When TidyOS's screen is open in two browser pages at once (often a phone's hotspot sign-in sheet plus the browser), the page that's taken over now gets the message and stops, instead of the two taking turns every second.
 
 ### 3.4.15 / The Shelf 1.19.2: an in-line card module the other way round works too
 - TidyOS Pro and the dual-boot Shelf also look for the card with the in-line module turned round (CS 39,

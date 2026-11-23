@@ -74,7 +74,7 @@ canvas{background:#00aaaa;touch-action:none;outline:none;cursor:default}
 <script>var MP=8081;
 var c=document.getElementById('c'),g=c.getContext('2d'),o=document.createElement('canvas');o.width=640;o.height=480;window.tidyScreen=o;
 var og=o.getContext('2d'),img=og.createImageData(640,480),px=new Uint32Array(img.data.buffer),ZK=1;
-var lostAt=0,home=null,ws=null,bpp=2,pal=new Uint32Array(8),dirty=false,rx=0,kicked=false,down={},mx=-1,my=-1,mb=0,mDirty=false;
+var openAt=0,flap=0,lostAt=0,home=null,ws=null,bpp=2,pal=new Uint32Array(8),dirty=false,rx=0,kicked=false,down={},mx=-1,my=-1,mb=0,mDirty=false;
 var msg=document.getElementById('msg'),mt=document.getElementById('mt'),btn=document.getElementById('mb'),st=document.getElementById('st'),kb=document.getElementById('kb');
 function show(t,b){mt.textContent=t;btn.style.display=b?'':'none';msg.style.display=t?'flex':'none';}
 // sizing: whole device pixels when that fills most of the window (every pixel the same size = crisp text),
@@ -95,7 +95,7 @@ function connect(){
  kicked=false;if(!lostAt)show('Connecting to TidyOS Pro...');
  ws=new WebSocket('ws://'+location.host+'/ws');ws.binaryType='arraybuffer';
  var w0=ws;setTimeout(function(){if(w0.readyState==0)w0.close();},2000);   // a board that's restarting can leave this hanging: give up and try again (every second or so)
- ws.onopen=function(){lostAt=0;show('');st.textContent='Connected';c.focus();var t=Math.floor(Date.now()/1000);send([6,t&255,t>>8&255,t>>16&255,t>>>24]);wxAt=0;fcAt=0;ctAt=0;nwAt=0;setTimeout(function(){weather();fieldWx();cityTemps();news();},300);};   // all at once, as soon as the screen is up
+ ws.onopen=function(){lostAt=0;openAt=Date.now();show('');st.textContent='Connected';c.focus();var t=Math.floor(Date.now()/1000);send([6,t&255,t>>8&255,t>>16&255,t>>>24]);wxAt=0;fcAt=0;ctAt=0;nwAt=0;setTimeout(function(){weather();fieldWx();cityTemps();news();},300);};   // all at once, as soon as the screen is up
  ws.onmessage=function(e){var d=new Uint8Array(e.data);rx+=d.length;
   if(d[0]==1){bpp=d[1];for(var i=0;i<d[2];i++)pal[i]=0xff000000|d[5+i*3]<<16|d[4+i*3]<<8|d[3+i*3];}
   else if(d[0]==2){var y=d[1]|d[2]<<8,n=d[3],o=4,rb=bpp==1?80:bpp==2?160:240;
@@ -123,7 +123,7 @@ function connect(){
   if(secs>90)t='Still no answer after '+secs+' s - trying every second. Check the board is on and on this Wi-Fi.';
   if(location.hostname=='192.168.4.1')t='Lost the TidyOS hotspot - trying again...\nIf TidyOS just joined your Wi-Fi, switch this device to '+(home?home.ssid:'that Wi-Fi')+' and open http://'+(home?home.ip:'the address on its screen');
   else if(home&&home.host)t+='\nIf you turned on the TidyOS hotspot: join Wi-Fi '+('TidyOS-'+home.host.slice(7).toUpperCase())+' (password tidyos123) and open http://192.168.4.1';
-  show(t);setTimeout(connect,1000);}};
+  show(t);var q=openAt&&Date.now()-openAt<4000;openAt=0;flap=q?flap+1:0;setTimeout(connect,flap>2?6000:1000);}};   // dropped again right after connecting (another page open on it?): slow down
 }
 btn.onclick=function(){connect();};
 function frame(){if(dirty){og.putImageData(img,0,0);g.imageSmoothingEnabled=false;g.drawImage(o,0,0,640*ZK,480*ZK);dirty=false;}
@@ -785,7 +785,7 @@ static void handleHttp(WiFiClient c, const std::string & req)
     std::string resp = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ";
     resp.append((const char *)b64, olen);
     resp += "\r\n\r\n";
-    if (s_view) { uint8_t k = 3; wsSend(s_ws, &k, 1); dropViewer(); }     // tell the old browser it was taken over
+    if (s_view) { uint8_t k = 3; wsSend(s_ws, &k, 1); s_ws.flush(); delay(40); dropViewer(); }     // tell the old browser it was taken over (and let that message get there before the socket closes, or it just reconnects and the two pages take turns)
     c.write((const uint8_t *)resp.data(), resp.size());
     c.setNoDelay(true);
     s_ws = c;
