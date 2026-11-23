@@ -3598,14 +3598,14 @@ void openPing()
 class SwitchesApp : public AppFrame {
 public:
   static AppFrame * inst;
-  uiButton * sw[3];
-  uiLabel  * note[3];
+  uiButton * sw[4];
+  uiLabel  * note[4];
   uiLabel  * sdInfo, * mem;
 
-  SwitchesApp() : AppFrame("Switches", Point(110, 50), Size(420, 360), &inst) {
-    static const char * names[3] = { "SD card", "Wireless mesh", "Status light" };
-    for (int i = 0; i < 3; ++i) {
-      int y = cy + 4 + i * 96;
+  SwitchesApp() : AppFrame("Switches", Point(110, 36), Size(420, 404), &inst) {
+    static const char * names[4] = { "SD card", "Wireless mesh", "Status light", "GPS module" };
+    for (int i = 0; i < 4; ++i) {
+      int y = cy + 4 + i * 82;
       auto l = label(names[i], cx + 4, y + 8, 150, 24);
       l->labelStyle().textFont = &FONT_std_18;
       sw[i] = button("", cx + 250, y, 150, 38);
@@ -3616,7 +3616,7 @@ public:
     }
     sdInfo = label("", cx + 4, cy + 4 + 62, 400, 18);
     sdInfo->labelStyle().textFont = &FONT_std_12;
-    mem = label("", cx + 4, cy + 300, 400, 18);
+    mem = label("", cx + 4, cy + 336, 400, 18);
     mem->labelStyle().textFont = &FONT_std_12;
     refresh();
     startTimer(1000);
@@ -3643,10 +3643,13 @@ public:
       gSet.meshOn = !gSet.meshOn;
       settingsSave();
       comsSetOn(gSet.meshOn);
-    } else {
+    } else if (i == 2) {
       gSet.ledOn = !gSet.ledOn;
       settingsSave();
       ledSetOn(gSet.ledOn);
+    } else {
+      gSet.gpsOn = !gSet.gpsOn;
+      settingsSave();
     }
     refresh();
   }
@@ -3677,6 +3680,9 @@ public:
     else set(note[1], gSet.meshOn ? (rf::radioOk() && gSet.mesh900 ? "Talking with Coms boards nearby (2.4 GHz + 900 MHz LoRa)." : "Talking with Coms boards nearby (2.4 GHz). Uses a few KB.") : "Off: no Coms mesh. Shelf messages on Wi-Fi still work.");
     show(2, gSet.ledOn, "ON", "OFF");
     set(note[2], gSet.ledOn ? "Breathing = ready, flicker = SD card busy. Uses ~2 KB." : "Off: the white LED stays dark. Saves ~2 KB.");
+    show(3, gSet.gpsOn, "ON", "OFF");
+    set(note[3], !gSet.gpsOn ? "Off: no GPS search at start-up. Takes effect next start." :
+                 rf::gnssRunning() ? "GPS found on the header." : "No GPS found at start-up (or the SD card uses its pins).");
     char b[80];
     snprintf(b, sizeof(b), "Free memory now: %u KB   (switches are remembered)", (unsigned)(ramFree() / 1024));
     set(mem, b);

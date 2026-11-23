@@ -66,6 +66,7 @@ void settingsLoad()
   gSet.mesh900   = s_prefs.getBool("m900", true);
   gSet.ledOn     = s_prefs.getBool("led", false);
   gSet.shelfOn   = s_prefs.getBool("shelf", false);
+  gSet.gpsOn     = s_prefs.getBool("gps", true);
   gSet.tidyBands = s_prefs.getBool("tbands", false);
   gSet.tidyFreeze = s_prefs.getBool("tfreeze", false);
   gSet.hotspot = s_prefs.getBool("hotspot", false);
@@ -95,6 +96,7 @@ void settingsSave()
   s_prefs.putBool("m900", gSet.mesh900);
   s_prefs.putBool("led", gSet.ledOn);
   s_prefs.putBool("shelf", gSet.shelfOn);
+  s_prefs.putBool("gps", gSet.gpsOn);
   s_prefs.putBool("tbands", gSet.tidyBands);
   s_prefs.putBool("tfreeze", gSet.tidyFreeze);
   s_prefs.putBool("hotspot", gSet.hotspot);
@@ -1261,6 +1263,7 @@ static void startDisplay()
 }
 
 const char * gSDWiring = "none";
+bool gpsSwitchOn() { return gSet.gpsOn; }
 
 // Same method as The Shelf on an ESP32 (Arduino SD library, tried at 10, 4 and 1 MHz):
 // it reads cards that ESP-IDF's own SD-over-SPI driver rejects.
@@ -1623,7 +1626,7 @@ static void memLog(const char * step)
 // Shown in the browser before anything big starts, so memory-hungry parts can be left off
 // for this boot. Boots by itself after a countdown, so a restart with nobody watching still
 // comes up. Click anything (or press a key) to stop the countdown.
-static const int BW_X = 130, BW_Y = 30, BW_W = 380, BW_H = 400;
+static const int BW_X = 130, BW_Y = 12, BW_W = 380, BW_H = 452;
 
 static void bootRow(Canvas & cv, int i, const char * name, const char * note, bool on, const char * valText = nullptr)
 {
@@ -1681,6 +1684,9 @@ static void bootDraw(Canvas & cv)
   bootRow(cv, 2, "Status light", "~2 KB. Breathes when TidyOS is ready", gSet.ledOn);
   bootScreenRow(cv);
   bootRow(cv, 4, "Shelf messages", "~9 KB. Chat with your Shelves on Wi-Fi", gSet.shelfOn);
+#ifdef TIDYOS_V4
+  bootRow(cv, 5, "GPS module", "Off: no GPS search (pins 39-42 left alone)", gSet.gpsOn);
+#endif
   // Boot button, and Update next to it
   int bx = BW_X + BW_W / 2 - 80, by = BW_Y + BW_H - 70;
   cv.setBrushColor(T.face);
@@ -1729,7 +1735,7 @@ static void bootChooser()
     int x, y;
     if (inputBootClick(x, y)) {
       timer = false;
-      for (int i = 0; i < 5; ++i) {
+      for (int i = 0; i < 6; ++i) {
         int ry = BW_Y + 40 + i * 50;
         if (x >= BW_X && x < BW_X + BW_W && y >= ry - 4 && y < ry + 44) toggled = i;
       }
@@ -1748,7 +1754,7 @@ static void bootChooser()
     int k;
     while ((k = inputBootKey()) >= 0) {
       timer = false;
-      if (k >= 0x1E && k <= 0x22) toggled = k - 0x1E;        // keys 1 to 5
+      if (k >= 0x1E && k <= 0x23) toggled = k - 0x1E;        // keys 1 to 6
       if (k == 0x28 || k == 0x58) boot = true;                // Enter
     }
     if (toggled == 3) {                          // 4 colours -> 8 colours -> black & white -> 4 colours
@@ -1757,6 +1763,15 @@ static void bootChooser()
       settingsSave();
       bootScreenRow(cv);
       shown = -2;
+      toggled = -1;
+    }
+    if (toggled == 5) {
+#ifdef TIDYOS_V4
+      gSet.gpsOn = !gSet.gpsOn;
+      settingsSave();
+      bootRow(cv, 5, "GPS module", "Off: no GPS search (pins 39-42 left alone)", gSet.gpsOn);
+      shown = -2;
+#endif
       toggled = -1;
     }
     if (toggled == 4) {
@@ -1795,7 +1810,7 @@ static void bootChooser()
     delay(600);
     ESP.restart();
   }
-  Serial.printf("[TidyOS] start-up switches: SD %s, mesh %s, light %s, shelf %s, colours %d\n", gSet.sdOn ? "on" : "off", gSet.meshOn ? "on" : "off", gSet.ledOn ? "on" : "off", gSet.shelfOn ? "on" : "off", gSet.colors);
+  Serial.printf("[TidyOS] start-up switches: SD %s, mesh %s, light %s, shelf %s, GPS %s, colours %d\n", gSet.sdOn ? "on" : "off", gSet.meshOn ? "on" : "off", gSet.ledOn ? "on" : "off", gSet.shelfOn ? "on" : "off", gSet.gpsOn ? "on" : "off", gSet.colors);
 }
 #endif
 

@@ -109,6 +109,7 @@ void  meshCounts(int & sent, int & heard);
 bool gnssStart();               // looks for the module (once); true if NMEA is coming in
 bool gnssFixed();
 
+bool  gnssRunning();            // a GPS module was found and is being read
 }  // namespace rf
 
 bool gnssPresent();             // for core.cpp: GPIO 39-42 are taken by the GNSS module

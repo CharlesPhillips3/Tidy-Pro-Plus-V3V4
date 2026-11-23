@@ -17,6 +17,7 @@ static inline int imax(int a, int b) { return a > b ? a : b; }
 static inline int imin(int a, int b) { return a < b ? a : b; }
 
 extern const char * gSDWiring;   // core.cpp: which wiring the SD card was found on
+bool gpsSwitchOn();              // core.cpp: the GPS start-up switch
 
 namespace rf {
 
@@ -496,6 +497,11 @@ bool gnssRunning() { return s_gnssState > 0; }
 bool gnssStart()
 {
   if (s_gnssState) return s_gnssState > 0;
+  if (!gpsSwitchOn()) {
+    s_gnssState = -1;
+    Serial.println("[TidyOS Pro] GPS switched off (Switches): not looking for one");
+    return false;
+  }
   if (strstr(::gSDWiring, "in-line")) {     // the SD card is on 39-42: those are the GNSS pins, so no GPS (and hands off them)
     s_gnssState = -1;
     Serial.println("[TidyOS Pro] GNSS skipped: the in-line SD card uses its pins");
@@ -549,6 +555,7 @@ void saveSettings() {}
 float powerDensity(float, float, float) { return 0; }
 bool gnssStart() { return false; }
 bool gnssFixed() { return false; }
+bool gnssRunning() { return false; }
 void meshEnable(bool) {}
 void meshOnReceive(void (*)(const uint8_t *, size_t)) {}
 void meshSend(const uint8_t *, size_t) {}

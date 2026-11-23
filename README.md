@@ -26,7 +26,11 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.17. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.18. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.18: GPS switch
+
+* New **GPS module** switch, in Switches and on the start-up switches screen (key 6). Off: TidyOS doesn't look for a GPS at start-up and leaves pins 39-42 alone. On by default; a change takes effect at the next start.
 
 ### 3.4.17: SD before GPS, hotspot at 10.1.1.250
 

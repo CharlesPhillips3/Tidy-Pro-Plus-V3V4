@@ -58,6 +58,7 @@ struct Settings {
   bool   mesh900;     // ...and over 900 MHz LoRa too, on a V4 (on by default)
   bool   ledOn;       // blue status light on (off by default)
   bool shelfOn = false;   // Shelf messages over Wi-Fi (start-up switch)
+  bool gpsOn = true;      // look for a GPS module on 39-42 at start-up (start-up switch)
   bool tidyBands = false; // Tidy: shade every other row
   bool hotspot = false;   // keep the TidyOS hotspot running (devices join TidyOS directly)
   bool tidyFreeze = false;// Tidy: keep row 1 at the top
