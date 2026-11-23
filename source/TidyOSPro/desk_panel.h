@@ -148,7 +148,7 @@ static void deskNote(const char * l1, const std::string & l2)
   strlcpy(s_panNote1, l1, sizeof(s_panNote1)); strlcpy(s_panNote2, l2.c_str(), sizeof(s_panNote2));
   s_panNoteAt = millis(); s_dropNoteSeq++;
 }
-static Rect s_mp3Btn, s_volDnBtn, s_volUpBtn;     // the music buttons between the clock and the drop box
+static Rect s_mp3Btn, s_volDnBtn, s_volUpBtn, s_nextBtn;     // the music buttons between the clock and the drop box
 bool musicQuickPlaying();                         // media_apps.h
 static void deskDropTick()                  // on the desktop's timer
 {
@@ -647,17 +647,21 @@ static void drawDeskPanel(Canvas * cv)
   static const char * MON[12] = { "January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December" };
   snprintf(b, sizeof(b), "%d:%02d %s", t.tm_hour % 12 == 0 ? 12 : t.tm_hour % 12, t.tm_min, t.tm_hour < 12 ? "AM" : "PM");
   cv->drawText(&FONT_std_24, x, y, b);
+  const int clockW = cv->textExtent(&FONT_std_24, b) + 2;    // (the music buttons sit evenly after it)
   y += 30;
   snprintf(b, sizeof(b), "%s, %s %d, %d", DAY[t.tm_wday % 7], MON[t.tm_mon % 12], t.tm_mday, t.tm_year + 1900);
   cv->drawText(&FONT_std_14, x, y, b);
 #ifdef TIDYOS_HTML5
-  {                                                          // MP3, volume down / up: between the time and the drop box
-    int bx = x + cv->textExtent(&FONT_std_24, "12:00 PM") + 8, by = r.Y1 + 9, bh = 20;
-    int room = (r.X2 - 106 - 4) - bx;                        // up to the drop box
-    int mw = room >= 66 ? 30 : 26, vw = room >= 66 ? 15 : 13;
-    s_mp3Btn = Rect(bx, by, bx + mw, by + bh);
-    s_volDnBtn = Rect(bx + mw + 4, by, bx + mw + 4 + vw, by + bh);
-    s_volUpBtn = Rect(s_volDnBtn.X2 + 3, by, s_volDnBtn.X2 + 3 + vw, by + bh);
+  {                                                          // MP3, volume - / +, next: evenly between the time and the drop box
+    int left = x + clockW, right = r.X2 - 100;                   // the space between the time and the drop box
+    int mw = 26, sw = 13, g = 3, bh = 20, by = r.Y1 + 9;
+    int total = mw + 3 * sw + 3 * g;
+    int gap = imax(2, (right - left - total) / 2);           // the same space each side
+    int bx = left + gap;
+    s_mp3Btn    = Rect(bx, by, bx + mw - 1, by + bh);
+    s_volDnBtn  = Rect(s_mp3Btn.X2 + 1 + g, by, s_mp3Btn.X2 + g + sw, by + bh);
+    s_volUpBtn  = Rect(s_volDnBtn.X2 + 1 + g, by, s_volDnBtn.X2 + g + sw, by + bh);
+    s_nextBtn   = Rect(s_volUpBtn.X2 + 1 + g, by, s_volUpBtn.X2 + g + sw, by + bh);
     bool on = musicQuickPlaying();
     auto btn = [&](const Rect & q, const char * t, bool hot) {
       cv->setBrushColor(hot ? T.accent : T.face);
@@ -670,10 +674,11 @@ static void drawDeskPanel(Canvas * cv)
     btn(s_mp3Btn, "MP3", on);
     btn(s_volDnBtn, "-", false);
     btn(s_volUpBtn, "+", false);
+    btn(s_nextBtn, "N", false);
     cv->setBrushColor(T.win);
   }
   {                                                          // the drop box, right of the time
-    int bx1 = r.X2 - 106, by1 = r.Y1 + 6, bx2 = r.X2 - 8, by2 = r.Y1 + 34;
+    int bx1 = r.X2 - 100, by1 = r.Y1 + 6, bx2 = r.X2 - 8, by2 = r.Y1 + 34;
     cv->setPenColor(T.text);
     for (int k = bx1; k < bx2; k += 6) { cv->drawLine(k, by1, imin(k + 3, bx2), by1); cv->drawLine(k, by2, imin(k + 3, bx2), by2); }
     for (int k = by1; k < by2; k += 6) { cv->drawLine(bx1, k, bx1, imin(k + 3, by2)); cv->drawLine(bx2, k, bx2, imin(k + 3, by2)); }

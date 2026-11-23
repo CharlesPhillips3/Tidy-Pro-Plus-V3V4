@@ -735,6 +735,7 @@ void oledBegin();   // oled.cpp
 #include "desk_panel.h"
 std::string musicQuickToggle(bool midi);   // media_apps.h: the panel's MP3 and volume buttons
 std::string musicQuickVol(int d);
+std::string musicQuickNext();
 void musicQuickTick();
 #ifdef TIDYOS_PRO
 // a window (other than the desktop itself) is over the news line
@@ -785,11 +786,12 @@ public:
 #ifdef TIDYOS_HTML5
           if (!showingHint()) {                                     // the panel's music buttons: MP3, volume - / +
             auto in = [&](const Rect & q) { return q.X2 > q.X1 && mx >= q.X1 && mx <= q.X2 && my >= q.Y1 && my <= q.Y2; };
-            int what = in(s_mp3Btn) ? 0 : in(s_volDnBtn) ? 1 : in(s_volUpBtn) ? 2 : -1;
+            int what = in(s_mp3Btn) ? 0 : in(s_volDnBtn) ? 1 : in(s_volUpBtn) ? 2 : in(s_nextBtn) ? 3 : -1;
             if (what >= 0) {
-              std::string m = what == 0 ? musicQuickToggle(false) : musicQuickVol(what == 1 ? -1 : 1);
-              if (what == 0 && m.rfind("Music: ", 0) == 0) deskNote("Playing", m.substr(7));
-              else deskNote(what == 0 ? "Music" : "Volume", what == 0 ? m : m.substr(m.find(' ') + 1));
+              std::string m = what == 0 ? musicQuickToggle(false) : what == 3 ? musicQuickNext() : musicQuickVol(what == 1 ? -1 : 1);
+              if ((what == 0 || what == 3) && m.rfind("Music: ", 0) == 0) deskNote("Playing", m.substr(7));
+              else if (what == 1 || what == 2) deskNote("Volume", m.substr(m.find(' ') + 1));
+              else deskNote("Music", m.empty() ? "Nothing playing" : m);
               repaint(deskPanelRect());
               break;
             }
