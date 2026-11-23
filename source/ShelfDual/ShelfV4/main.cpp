@@ -865,7 +865,9 @@ bool remoteBoardCommand(uint8_t cmd, const String& arg, String& out) {
 
 // ------------------------------------------------------------ setup / loop
 static void screenTask(void*);
+void crashBegin(); void crashReport();   // crashlog.cpp
 void setup() {
+  crashBegin();
   Serial.begin(115200);
 #ifdef SHELF_DUALBOOT
   // dual boot: the next restart goes back to the boot menu (TidyBoot)
@@ -950,6 +952,7 @@ int onlinePeerCount();
 
 void loop() {
   uint32_t now = millis();
+  { static int told = 0; if ((told == 0 && now > 5000) || (told == 1 && now > 30000)) { told++; crashReport(); } }   // (twice: the USB console may reconnect late)
   if (apActive) dns.processNextRequest();
   if (!staOK && WiFi.status() == WL_CONNECTED) { onJoined(); apOffAt = now + 90000; }
   if (staOK && WiFi.status() != WL_CONNECTED) { staOK = false; Serial.println("[shelf] lost the home Wi-Fi"); }

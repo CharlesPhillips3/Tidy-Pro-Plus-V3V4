@@ -28,6 +28,10 @@ The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (mad
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
 Version 3.4.22. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
 
+### The Shelf 1.19.5 (dual boot): crash recorder
+
+* If The Shelf crashes, the next start prints "[shelf] last run crashed: ..." with the reason and where, on the flasher's USB console (5 s and 30 s after start). The crash report itself goes to a port the USB console can't see.
+
 ### 3.4.22: works from its own hotspot (work, car)
 
 * Music, game music and Full colour pictures now play when you're on the TidyOS hotspot, not only on home Wi-Fi.
