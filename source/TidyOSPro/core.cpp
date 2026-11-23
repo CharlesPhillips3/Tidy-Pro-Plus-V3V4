@@ -1287,13 +1287,14 @@ static bool mountSD(int miso, int mosi, int clk, int cs, const char * name)
   return false;
 }
 
-bool gnssPresent();   // rf_gnss.cpp
+bool gnssAlreadyFound();   // rf_engine.cpp: a GPS is already running on 39-42
 
 static bool mountAnySD()
 {
 #ifdef TIDYOS_V4
   if (mountSD(SD_MISO, SD_MOSI, SD_CLK, SD_CS, "V4 (CS 4, MISO 6, CLK 47, MOSI 48)")) return true;
-  if (gnssPresent()) return false;     // 39-42 belong to the GNSS module
+  if (gnssAlreadyFound()) return false;     // 39-42 belong to a GPS that is already running
+  // (the card is tried before looking for a GPS, like The Shelf does: probing for a GPS pokes 40 and 42)
   if (mountSD(SD_INLINE_MISO, SD_INLINE_MOSI, SD_INLINE_CLK, SD_INLINE_CS, "Shelf in-line (CS 42, MOSI 41, CLK 40, MISO 39)")) return true;
   // the in-line module the other way round (easy to do when it's fitted from the bottom of the board, and
   // often soldered before anyone notices): the four pins are ordinary GPIOs, so they work reversed too

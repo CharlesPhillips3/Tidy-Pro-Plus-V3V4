@@ -92,7 +92,7 @@ static void pageClock()
   }
   s_oled.setFont(u8g2_font_5x8_tr);
   if (netConnected()) snprintf(b, sizeof(b), "http://%s", WiFi.localIP().toString().c_str());
-  else snprintf(b, sizeof(b), "Hotspot: http://192.168.4.1");
+  else snprintf(b, sizeof(b), "Hotspot: http://10.1.1.250");
   centre(b, 62);
 }
 
@@ -117,7 +117,7 @@ static void pageAddress()
     centre(b, 34);
     s_oled.setFont(u8g2_font_5x8_tr);
     snprintf(b, sizeof(b), "password %s", SCREEN_AP_PASS); centre(b, 46);
-    centre("then open 192.168.4.1", 57);
+    centre("then open 10.1.1.250", 57);
   }
 }
 

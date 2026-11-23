@@ -6,7 +6,7 @@
 // back into TidyOS. One browser at a time; opening it somewhere else takes over.
 //
 // With no Wi-Fi set up (or if it can't connect) TidyOS starts a "TidyOS-Setup" hotspot,
-// so a phone or PC can join it, open http://192.168.4.1 and use Settings to join home Wi-Fi.
+// so a phone or PC can join it, open http://10.1.1.250 and use Settings to join home Wi-Fi.
 
 #include "config.h"
 #ifdef TIDYOS_HTML5
@@ -121,8 +121,8 @@ function connect(){
   if(!lostAt)lostAt=Date.now();var secs=Math.round((Date.now()-lostAt)/1000);
   var t='TidyOS Pro is restarting (boot menu, then TidyOS Pro, or an update) - reconnecting every second... '+secs+' s';
   if(secs>90)t='Still no answer after '+secs+' s - trying every second. Check the board is on and on this Wi-Fi.';
-  if(location.hostname=='192.168.4.1')t='Lost the TidyOS hotspot - trying again...\nIf TidyOS just joined your Wi-Fi, switch this device to '+(home?home.ssid:'that Wi-Fi')+' and open http://'+(home?home.ip:'the address on its screen');
-  else if(home&&home.host)t+='\nIf you turned on the TidyOS hotspot: join Wi-Fi '+('TidyOS-'+home.host.slice(7).toUpperCase())+' (password tidyos123) and open http://192.168.4.1';
+  if(location.hostname=='10.1.1.250')t='Lost the TidyOS hotspot - trying again...\nIf TidyOS just joined your Wi-Fi, switch this device to '+(home?home.ssid:'that Wi-Fi')+' and open http://'+(home?home.ip:'the address on its screen');
+  else if(home&&home.host)t+='\nIf you turned on the TidyOS hotspot: join Wi-Fi '+('TidyOS-'+home.host.slice(7).toUpperCase())+' (password tidyos123) and open http://10.1.1.250';
   show(t);var q=openAt&&Date.now()-openAt<4000;openAt=0;flap=q?flap+1:0;setTimeout(connect,flap>2?6000:1000);}};   // dropped again right after connecting (another page open on it?): slow down
 }
 btn.onclick=function(){connect();};
@@ -844,6 +844,8 @@ static void apStart()
   // (the hotspot only needs to reach across a room)
   static std::string apName = boardId();
   WiFi.softAP(apName.c_str(), SCREEN_AP_PASS, 6, 0, 4);
+  // a fixed address, the same as The Shelf's own Wi-Fi: http://10.1.1.250 (phones get 10.1.1.100 and up)
+  WiFi.softAPConfig(IPAddress(10, 1, 1, 250), IPAddress(10, 1, 1, 250), IPAddress(255, 255, 255, 0), IPAddress(10, 1, 1, 100));
   WiFi.setTxPower(WIFI_POWER_11dBm);
   WiFi.setSleep(false);
   delay(100);

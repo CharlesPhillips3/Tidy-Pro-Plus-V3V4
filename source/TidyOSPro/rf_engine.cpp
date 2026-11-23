@@ -16,6 +16,8 @@
 static inline int imax(int a, int b) { return a > b ? a : b; }
 static inline int imin(int a, int b) { return a < b ? a : b; }
 
+extern const char * gSDWiring;   // core.cpp: which wiring the SD card was found on
+
 namespace rf {
 
 Settings   gSettings;
@@ -489,9 +491,16 @@ static bool listenFor(int baud, int rx, int tx, uint32_t ms)
   return false;
 }
 
+bool gnssRunning() { return s_gnssState > 0; }
+
 bool gnssStart()
 {
   if (s_gnssState) return s_gnssState > 0;
+  if (strstr(::gSDWiring, "in-line")) {     // the SD card is on 39-42: those are the GNSS pins, so no GPS (and hands off them)
+    s_gnssState = -1;
+    Serial.println("[TidyOS Pro] GNSS skipped: the in-line SD card uses its pins");
+    return false;
+  }
 #if !CONFIG_SPIRAM_MODE_OCT     // (V4-R8: GPIO 33-37 belong to its PSRAM and 40 to the screen: leave them alone)
   pinMode(GNSS_EN, OUTPUT);  digitalWrite(GNSS_EN, LOW);      // power on
   pinMode(GNSS_WAKE, OUTPUT); digitalWrite(GNSS_WAKE, HIGH);
@@ -523,6 +532,7 @@ bool gnssFixed() { std::lock_guard<std::mutex> lk(gMx); return gGnss.fix; }
 }  // namespace rf
 
 bool gnssPresent() { return rf::gnssStart(); }
+bool gnssAlreadyFound() { return rf::gnssRunning(); }
 
 #else   // not a V4: no radio
 namespace rf {

@@ -26,7 +26,12 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.16. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.17. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.17: SD before GPS, hotspot at 10.1.1.250
+
+* The in-line SD card (39-42) is now tried before looking for a GPS, the same order as The Shelf. Looking for a GPS switches pins 40 and 42 (the GPS wake and reset lines), which could stop the card answering afterwards. With the card on those pins, the GPS search is skipped.
+* TidyOS's own hotspot is now at **http://10.1.1.250**, the same address as The Shelf's (phones get 10.1.1.100 and up).
 
 ### 3.4.16: no false GPS, steadier hotspot screen
 
@@ -246,7 +251,7 @@ Version 3.4.16. Settings → Check for updates gets updates from this repo, **wi
   PRG: tap once to hold a page (again to roll), tap twice for the next page; on the stopwatch hold 1 s to start/stop,
   3 s to reset. The stopwatch keeps running on the other pages (shown top right). It dims after 30 minutes without a press.
 - **Address page** first after start-up: the IP address and name on your Wi-Fi, or the hotspot's name, password and
-  address in full (the old screen cut "192.168.4.1" off).
+  address in full (the old screen cut "10.1.1.250" off).
 - **Bottom bar**: the TidyOS logo in a rounded box with a blue PRO badge, then the version and the board's last 4 ID digits;
   the clock shows seconds when there's room, and its colons blink every second.
 
