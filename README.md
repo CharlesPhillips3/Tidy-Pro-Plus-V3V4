@@ -28,6 +28,10 @@ The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (mad
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
 Version 3.4.20. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
 
+### The Shelf 1.19.3 (dual boot): the right Shelf again
+
+* Since 3.4.16 the dual-boot images and The Shelf's own updater carried an old Shelf build by mistake (it only looked for the SD card on CS 4, MISO 6, CLK 47, MOSI 48, and its own Wi-Fi was at 192.168.4.1). 1.19.3 is the current Shelf again: in-line SD card on 39-42 (either way round) and its own Wi-Fi at 10.1.1.250.
+
 ### 3.4.20: dropped files go straight to Incoming
 
 * Files dropped on the desktop page go into the Incoming folder without a "where should it go?" question. The drop box says "Added to Incoming" with the file name for a few seconds (or "3 added to Incoming").

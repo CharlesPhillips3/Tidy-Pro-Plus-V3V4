@@ -35,7 +35,7 @@
       "shelf": {
         "path": "firmware/parts/v4/shelf.bin",
         "offset": 3670016,
-        "size": 1396736,
+        "size": 1519616,
         "slot": 2097152
       },
       "www": {
@@ -79,7 +79,7 @@
       "shelf": {
         "path": "firmware/parts/v4-r8/shelf.bin",
         "offset": 3670016,
-        "size": 1396736,
+        "size": 1490944,
         "slot": 2097152
       },
       "www": {
@@ -317,6 +317,6 @@
     }
   ],
   "version": "3.4.20",
-  "shelfVersion": "1.19.2",
+  "shelfVersion": "1.19.3",
   "built": "2026-11-23"
 }
