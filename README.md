@@ -26,7 +26,11 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.24. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.25. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.25: music buttons on the desktop
+
+* Between the clock and the drop box: **MP3** (play / pause a random song from the Music folder; lit while playing) and volume **-** / **+**. What they did shows in the drop box for a few seconds. Songs carry on to the next one by themselves.
 
 ### 3.4.24 / The Shelf 1.19.6: internet through your web browser
 

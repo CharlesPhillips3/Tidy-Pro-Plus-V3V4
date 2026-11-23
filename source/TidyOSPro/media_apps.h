@@ -593,6 +593,9 @@ bool musicQuickPlaying()          // for Sammy's one music button
 
 void musicQuickTick()             // once a second: on to the next song when one ends
 {
+  static uint32_t lastTick = 0;     // (a game and the desktop both call this: once a second is enough)
+  if (millis() - lastTick < 800) return;
+  lastTick = millis();
   if (MusicApp::inst || s_qPlaying.empty() || s_qPaused) return;
   int st, pos, dur;
   screenMediaState(st, pos, dur);

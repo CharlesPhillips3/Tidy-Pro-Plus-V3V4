@@ -139,9 +139,22 @@ static int s_dropNoteN = 0;
 static uint32_t s_dropNoteAt = 0;
 static int s_dropNoteSeq = 0;
 static bool dropNoteOn() { return s_dropNoteN && millis() - s_dropNoteAt < 6000; }
+// the music buttons' answers ("Volume 60%", the song) take the drop box's place for a few seconds
+static char s_panNote1[28] = "", s_panNote2[100] = "";
+static uint32_t s_panNoteAt = 0;
+static bool panNoteOn() { return s_panNote1[0] && millis() - s_panNoteAt < 4000; }
+static void deskNote(const char * l1, const std::string & l2)
+{
+  strlcpy(s_panNote1, l1, sizeof(s_panNote1)); strlcpy(s_panNote2, l2.c_str(), sizeof(s_panNote2));
+  s_panNoteAt = millis(); s_dropNoteSeq++;
+}
+static Rect s_mp3Btn, s_volDnBtn, s_volUpBtn;     // the music buttons between the clock and the drop box
+bool musicQuickPlaying();                         // media_apps.h
 static void deskDropTick()                  // on the desktop's timer
 {
   if (s_dropNoteN && !dropNoteOn()) { s_dropNoteN = 0; s_dropNoteSeq++; }      // (time's up: the box goes back)
+  if (s_panNote1[0] && !panNoteOn()) { s_panNote1[0] = 0; s_dropNoteSeq++; }
+  { static bool was = false; bool now = musicQuickPlaying(); if (now != was) { was = now; s_dropNoteSeq++; } }   // the MP3 button shows playing
   while (s_dropR != s_dropW) {
     char name[100];
     portENTER_CRITICAL(&s_dropMux);
@@ -638,12 +651,40 @@ static void drawDeskPanel(Canvas * cv)
   snprintf(b, sizeof(b), "%s, %s %d, %d", DAY[t.tm_wday % 7], MON[t.tm_mon % 12], t.tm_mday, t.tm_year + 1900);
   cv->drawText(&FONT_std_14, x, y, b);
 #ifdef TIDYOS_HTML5
+  {                                                          // MP3, volume down / up: between the time and the drop box
+    int bx = x + cv->textExtent(&FONT_std_24, "12:00 PM") + 8, by = r.Y1 + 9, bh = 20;
+    int room = (r.X2 - 106 - 4) - bx;                        // up to the drop box
+    int mw = room >= 66 ? 30 : 26, vw = room >= 66 ? 15 : 13;
+    s_mp3Btn = Rect(bx, by, bx + mw, by + bh);
+    s_volDnBtn = Rect(bx + mw + 4, by, bx + mw + 4 + vw, by + bh);
+    s_volUpBtn = Rect(s_volDnBtn.X2 + 3, by, s_volDnBtn.X2 + 3 + vw, by + bh);
+    bool on = musicQuickPlaying();
+    auto btn = [&](const Rect & q, const char * t, bool hot) {
+      cv->setBrushColor(hot ? T.accent : T.face);
+      cv->fillRectangle(q.X1, q.Y1, q.X2, q.Y2);
+      cv->setPenColor(T.shadow);
+      cv->drawRectangle(q.X1, q.Y1, q.X2, q.Y2);
+      cv->setPenColor(hot ? T.accentText : T.text);
+      cv->drawText(&FONT_std_12, (q.X1 + q.X2 + 1) / 2 - cv->textExtent(&FONT_std_12, t) / 2, q.Y1 + 4, t);
+    };
+    btn(s_mp3Btn, "MP3", on);
+    btn(s_volDnBtn, "-", false);
+    btn(s_volUpBtn, "+", false);
+    cv->setBrushColor(T.win);
+  }
   {                                                          // the drop box, right of the time
     int bx1 = r.X2 - 106, by1 = r.Y1 + 6, bx2 = r.X2 - 8, by2 = r.Y1 + 34;
     cv->setPenColor(T.text);
     for (int k = bx1; k < bx2; k += 6) { cv->drawLine(k, by1, imin(k + 3, bx2), by1); cv->drawLine(k, by2, imin(k + 3, bx2), by2); }
     for (int k = by1; k < by2; k += 6) { cv->drawLine(bx1, k, bx1, imin(k + 3, by2)); cv->drawLine(bx2, k, bx2, imin(k + 3, by2)); }
-    if (dropNoteOn()) {                                     // just arrived: say where it went
+    if (panNoteOn()) {                                      // what a music button just did
+      char l2[100]; strlcpy(l2, s_panNote2, sizeof(l2));
+      while (strlen(l2) > 3 && cv->textExtent(&FONT_std_12, l2) > bx2 - bx1 - 10) { l2[strlen(l2) - 4] = 0; strlcat(l2, "...", sizeof(l2)); }
+      cv->setPenColor(T.accent);
+      cv->drawText(&FONT_std_12, bx1 + 6, by1 + 1, s_panNote1);
+      cv->setPenColor(T.text);
+      cv->drawText(&FONT_std_12, bx1 + 6, by1 + 14, l2);
+    } else if (dropNoteOn()) {                              // just arrived: say where it went
       char l1[24], l2[100];
       if (s_dropNoteN > 1) snprintf(l1, sizeof(l1), "%d added to Incoming", s_dropNoteN);
       else strlcpy(l1, "Added to Incoming", sizeof(l1));

@@ -733,6 +733,9 @@ static std::string s_bootNote;              // shown once on the desktop (update
 #include "rf_engine.h"
 void oledBegin();   // oled.cpp
 #include "desk_panel.h"
+std::string musicQuickToggle(bool midi);   // media_apps.h: the panel's MP3 and volume buttons
+std::string musicQuickVol(int d);
+void musicQuickTick();
 #ifdef TIDYOS_PRO
 // a window (other than the desktop itself) is over the news line
 static bool tickerCovered()
@@ -779,6 +782,19 @@ public:
               if (mx >= slots[i].X1 && mx <= slots[i].X2) { uiFrame * f = s_minimized[i]; bringToFront(f); break; }
             break;
           }
+#ifdef TIDYOS_HTML5
+          if (!showingHint()) {                                     // the panel's music buttons: MP3, volume - / +
+            auto in = [&](const Rect & q) { return q.X2 > q.X1 && mx >= q.X1 && mx <= q.X2 && my >= q.Y1 && my <= q.Y2; };
+            int what = in(s_mp3Btn) ? 0 : in(s_volDnBtn) ? 1 : in(s_volUpBtn) ? 2 : -1;
+            if (what >= 0) {
+              std::string m = what == 0 ? musicQuickToggle(false) : musicQuickVol(what == 1 ? -1 : 1);
+              if (what == 0 && m.rfind("Music: ", 0) == 0) deskNote("Playing", m.substr(7));
+              else deskNote(what == 0 ? "Music" : "Volume", what == 0 ? m : m.substr(m.find(' ') + 1));
+              repaint(deskPanelRect());
+              break;
+            }
+          }
+#endif
           if (!showingHint() && mx >= s_affBtn.X1 && mx <= s_affBtn.X2 && my >= s_affBtn.Y1 && my <= s_affBtn.Y2) {
             s_affShown = s_affShown % 3 + 1;                      // the affirmation >> button
             repaint(deskPanelRect());
@@ -826,6 +842,9 @@ public:
         if (gOpenTaskMgr) { gOpenTaskMgr = false; openSystem(); }
         alarmTick();                                // Clock alarm + Print Screen
         deskDropTick();                             // files dropped on the page: where do they go?
+#ifdef TIDYOS_HTML5
+        if (m_tick % 10 == 0) musicQuickTick();     // the panel's MP3: on to the next song when one ends
+#endif
 #ifdef TIDYOS_HTML5                                 // (the monitor edition has no IRAM to spare for sleep code)
         if (gSleepReq) {
           gSleepReq = false;
