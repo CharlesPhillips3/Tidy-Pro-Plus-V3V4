@@ -281,7 +281,7 @@ public:
 #ifdef TIDYOS_HTML5
     b("Full colour", 90, [this]() {
       if (path.empty()) return;
-      if (WiFi.status() != WL_CONNECTED) { gApp->messageBox("Pictures", "Full colour needs your home Wi-Fi.", "OK", nullptr, nullptr, uiMessageBoxIcon::Info); return; }
+      if (!netReachable()) { gApp->messageBox("Pictures", "Full colour needs Wi-Fi (home, or the TidyOS hotspot).", "OK", nullptr, nullptr, uiMessageBoxIcon::Info); return; }
       fileServerMedia(true);
       screenMedia("i " + fileServerMediaPath(path));
     });
@@ -402,11 +402,11 @@ public:
     timeLbl->labelStyle().textFont = &FONT_std_12;
     startTimer(1000);
     onTimer = [this](uiTimerHandle) { tick(); };
-    if (WiFi.status() == WL_CONNECTED) fileServerMedia(true);   // listening before the first song is asked for
+    if (netReachable()) fileServerMedia(true);   // listening before the first song is asked for
   }
 
   void play(const std::string & p) {
-    if (WiFi.status() != WL_CONNECTED) { gApp->messageBox("Music", "Music plays over your home Wi-Fi - join it in Settings.", "OK", nullptr, nullptr, uiMessageBoxIcon::Info); return; }
+    if (!netReachable()) { gApp->messageBox("Music", "Music plays over Wi-Fi: join your home Wi-Fi in Settings, or use the TidyOS hotspot.", "OK", nullptr, nullptr, uiMessageBoxIcon::Info); return; }
     fileServerMediaReady();
     playing = p; paused = false;
     lastState = 2;           // ignore "ended" until the browser has started this song (its last report may be the old song's)
@@ -524,7 +524,7 @@ std::string musicQuickPlay()
     if (m->playing.empty() || m->paused) m->playPause();
     return m->playing.empty() ? "No music files found." : "Music: " + baseName(m->playing);
   }
-  if (WiFi.status() != WL_CONNECTED) return "Music needs your home Wi-Fi (see Settings).";
+  if (!netReachable()) return "Music needs Wi-Fi (home, or the TidyOS hotspot).";
   if (!screenViewer()) return "Music plays in the web browser.";
   if (!s_qPlaying.empty() && s_qPaused) { screenMedia("r"); s_qPaused = false; return "Music: " + baseName(s_qPlaying); }
   if (!s_qPlaying.empty()) return "Music: " + baseName(s_qPlaying);
@@ -548,7 +548,7 @@ std::string musicQuickToggle(bool midi)
     m->playPause();
     return m->playing.empty() ? "No music files found." : (m->paused ? "Music paused." : "Music: " + baseName(m->playing));
   }
-  if (WiFi.status() != WL_CONNECTED && !screenViewer()) return "Music plays in the web browser.";
+  if (!netReachable() && !screenViewer()) return "Music plays in the web browser.";
   if (!screenViewer()) return "Music plays in the web browser.";
   // what the board remembers can be out of date (a new browser page has no music): go by what the page says
   if (!s_qPlaying.empty() && s_qEpoch != screenMediaEpoch()) { s_qPlaying.clear(); s_qPaused = false; }

@@ -9,6 +9,7 @@ void netSavedList(std::vector<std::string> & out);      // remembered networks, 
 bool netSavedPassword(const std::string & ssid, std::string & pass);
 void netForget(const std::string & ssid);
 bool netConnected();
+bool netReachable();     // a browser can reach the board: home Wi-Fi, or its own hotspot
 bool netClockSet();                 // true once the clock has a real time
 void netFixDns();                   // repair DNS servers after the hotspot changes Wi-Fi mode
 void netTick();                     // once a second: re-sync the clock after (re)connecting

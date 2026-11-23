@@ -825,6 +825,26 @@ static void handleHttp(WiFiClient c, const std::string & req)
 }
 
 // ---------------------------------------------------------------- setup hotspot
+static bool s_captive = false;      // the hotspot is a sign-in page (first setup only)
+static bool s_staPaused = false;    // not looking for home Wi-Fi while devices use the hotspot
+// While a phone or laptop is on the hotspot and home Wi-Fi isn't in range, stop looking for it: each
+// search hops the radio across channels, and the hotspot's devices drop off. Look again once they've gone.
+static void staPause(bool on)
+{
+  if (on == s_staPaused) return;
+  s_staPaused = on;
+  if (on) {
+    WiFi.setAutoReconnect(false);
+    WiFi.disconnect(false);          // (false: the hotspot stays up)
+    Serial.println("[TidyOS] hotspot in use: not looking for home Wi-Fi meanwhile");
+  } else if (!gSet.hotspot) {
+    WiFi.setAutoReconnect(true);
+    if (gSet.ssid.length()) WiFi.begin(gSet.ssid.c_str(), gSet.pass.c_str());
+    Serial.println("[TidyOS] looking for home Wi-Fi again");
+  }
+}
+bool screenStaPaused() { return s_staPaused; }
+
 static void apStart()
 {
   if (s_ap) return;
@@ -850,8 +870,24 @@ static void apStart()
   WiFi.setSleep(false);
   delay(100);
   Serial.printf("[TidyOS] hotspot up on channel %d, free RAM %u\n", WiFi.channel(), (unsigned)ramFree());
-  s_dns.setErrorReplyCode(DNSReplyCode::NoError);
-  s_dns.start(53, "*", WiFi.softAPIP());
+  // First setup (no Wi-Fi saved yet): a sign-in page, so the phone pops TidyOS up by itself.
+  // Otherwise (at work, in the car): no gateway and no DNS, like The Shelf's own Wi-Fi. Phones then
+  // say "no internet", stay joined, don't nag "Action needed" and keep using cellular for the
+  // rest (the desktop's weather and news come over that).
+  s_captive = !gSet.ssid.length();
+  if (s_captive) {
+    s_dns.setErrorReplyCode(DNSReplyCode::NoError);
+    s_dns.start(53, "*", WiFi.softAPIP());
+  } else {
+    esp_netif_t * ap = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+    if (ap) {
+      esp_netif_dhcps_stop(ap);
+      dhcps_offer_t none = 0;
+      esp_netif_dhcps_option(ap, ESP_NETIF_OP_SET, ESP_NETIF_ROUTER_SOLICITATION_ADDRESS, &none, sizeof(none));
+      esp_netif_dhcps_option(ap, ESP_NETIF_OP_SET, ESP_NETIF_DOMAIN_NAME_SERVER, &none, sizeof(none));
+      esp_netif_dhcps_start(ap);
+    }
+  }
   s_ap = true;
   s_apSince = millis();
   Serial.printf("[TidyOS] setup hotspot \"%s\" (password %s) - open http://%s\n", SCREEN_AP_NAME, SCREEN_AP_PASS, WiFi.softAPIP().toString().c_str());
@@ -860,7 +896,9 @@ static void apStart()
 static void apStop()
 {
   if (!s_ap) return;
-  s_dns.stop();
+  if (s_captive) s_dns.stop();
+  s_captive = false;
+  staPause(false);
   WiFi.softAPdisconnect(true);
   WiFi.mode(WIFI_STA);
   s_ap = false;
@@ -877,6 +915,13 @@ static void apManage()
   // no Wi-Fi set up, or it hasn't connected 25 s after start: open the hotspot
   if (!s_ap && !sta && (!gSet.ssid.length() || now > 25000)) apStart();
   if (!s_ap && gSet.hotspot) apStart();                         // "Run TidyOS Hotspot" in Settings
+  {                                                             // devices on the hotspot, no home Wi-Fi: stop searching
+    static uint32_t emptySince = 0;
+    int n = s_ap ? WiFi.softAPgetStationNum() : 0;
+    if (n > 0) emptySince = 0; else if (!emptySince) emptySince = now;
+    if (s_ap && !sta && n > 0 && gSet.ssid.length() && now - s_apSince > 15000) staPause(true);
+    else if (s_staPaused && (n == 0 && now - emptySince > 30000)) staPause(false);   // all gone for 30 s: look again
+  }
   // on home Wi-Fi for 2 minutes and nobody uses the hotspot: close it
   if (s_ap && !gSet.hotspot && sta && s_connSince && now - s_connSince > 300000 && WiFi.softAPgetStationNum() == 0) apStop();
 }
@@ -942,7 +987,7 @@ static void screenTask(void *)
       if (WiFi.status() == WL_CONNECTED) netMdnsBegin();
       if (!s_listening && (s_ap || WiFi.status() == WL_CONNECTED)) { s_srv.begin(); s_srv.setNoDelay(true); s_listening = true; }
     }
-    if (s_ap) for (int i = 0; i < 4; ++i) s_dns.processNextRequest();   // answer a burst of lookups promptly
+    if (s_ap && s_captive) for (int i = 0; i < 4; ++i) s_dns.processNextRequest();   // answer a burst of lookups promptly
     if (s_listening) pollHttp();
     if (s_view) {
       if (!s_ws.connected() || !pollInput(s_ws)) { dropViewer(); Serial.println("[TidyOS] browser left"); }

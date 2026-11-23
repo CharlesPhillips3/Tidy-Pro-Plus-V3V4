@@ -9,6 +9,7 @@
 void        screenBegin();       // start the web screen server (+ setup hotspot when needed)
 bool        screenViewer();      // a browser is connected
 bool        screenApOn();        // the TidyOS-Setup hotspot is running
+bool        screenStaPaused();   // not looking for home Wi-Fi while devices use the hotspot
 void        screenHotspot(bool on); // keep the hotspot running (Settings)
 void        screenTrim();           // free what the web screen isn't using
 std::string screenUrl();         // where to open the desktop, e.g. http://192.168.1.40
@@ -28,6 +29,7 @@ int         screenMediaEpoch();           // changes with every new browser page
 inline void        screenBegin()  {}
 inline bool        screenViewer() { return false; }
 inline bool        screenApOn()   { return false; }
+inline bool        screenStaPaused() { return false; }
 inline void        screenHotspot(bool) {}
 inline void        screenTrim() {}
 inline std::string screenUrl()    { return ""; }

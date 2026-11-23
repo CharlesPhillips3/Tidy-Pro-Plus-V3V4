@@ -5,6 +5,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include "fileserver.h"
+#include "net.h"
 #include "core.h"
 
 static volatile bool s_on = false;
@@ -346,7 +347,7 @@ static void serverTask(void *)
 {
   uint32_t idleSince = 0;
   for (;;) {
-    bool wifi = WiFi.status() == WL_CONNECTED;
+    bool wifi = netReachable();          // home Wi-Fi, or TidyOS's own hotspot (at work, in the car)
     bool want = s_on || (s_media && millis() - s_lastUse < 600000);
     // not wanted for 20 s: close up and end the task, giving back its 6 KB stack and the socket
     if (want) idleSince = 0;
@@ -393,7 +394,7 @@ int fileServerPort() { return FILES_PORT; }
 void fileServerMediaReady()
 {
   fileServerMedia(true);
-  for (int i = 0; i < 75 && !s_listening && WiFi.status() == WL_CONNECTED; ++i) delay(20);
+  for (int i = 0; i < 75 && !s_listening && netReachable(); ++i) delay(20);
 }
 
 std::string fileServerMediaPath(const std::string & file)

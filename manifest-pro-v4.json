@@ -1,6 +1,6 @@
 {
   "name": "TidyOS Pro for Heltec V4",
-  "version": "3.4.21",
+  "version": "3.4.22",
   "new_install_prompt_erase": true,
   "builds": [
     {

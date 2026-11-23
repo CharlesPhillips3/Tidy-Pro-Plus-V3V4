@@ -109,6 +109,7 @@ void netConnect(const char * ssid, const char * pass)
 }
 
 bool netConnected() { return WiFi.status() == WL_CONNECTED; }
+bool netReachable() { return WiFi.status() == WL_CONNECTED || screenApOn(); }
 
 std::string netStatus()
 {
@@ -212,7 +213,7 @@ void netTick()
   bool now = WiFi.status() == WL_CONNECTED;
   // not connected: every 20 s try the next saved network (home, work, phone...)
   if (now) s_tryAt = millis();
-  else if (s_nets.size() > 1 && !gSet.hotspot && millis() - s_tryAt > 20000) {
+  else if (s_nets.size() > 1 && !gSet.hotspot && !screenStaPaused() && millis() - s_tryAt > 20000) {
     s_tryIdx = (s_tryIdx + 1) % s_nets.size();
     s_tryAt = millis();
     Serial.printf("[TidyOS] trying saved Wi-Fi \"%s\"\n", s_nets[s_tryIdx].ssid.c_str());

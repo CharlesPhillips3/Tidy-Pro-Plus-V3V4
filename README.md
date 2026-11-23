@@ -26,7 +26,13 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.21. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.22. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.22: works from its own hotspot (work, car)
+
+* Music, game music and Full colour pictures now play when you're on the TidyOS hotspot, not only on home Wi-Fi.
+* Once Wi-Fi has been set up, the hotspot no longer acts as a sign-in page: no gateway and no DNS, like The Shelf's own Wi-Fi. Phones stay joined without "Action needed" pop-ups, and keep using cellular data for the internet (the desktop's weather and news come over that).
+* While a device is on the hotspot and home Wi-Fi is out of range, TidyOS stops searching for home Wi-Fi. Each search hopped the radio across channels and knocked phones off the hotspot. It looks again 30 s after the last device leaves.
 
 ### 3.4.21 / The Shelf 1.19.4: PRG hold to reset, Shelf status light
 
