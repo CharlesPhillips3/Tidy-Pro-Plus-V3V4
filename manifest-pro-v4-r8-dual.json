@@ -1,6 +1,6 @@
 {
   "name": "TidyOS Pro for Heltec V4-R8 + The Shelf (dual boot)",
-  "version": "3.4.26",
+  "version": "3.4.27",
   "new_install_prompt_erase": true,
   "builds": [
     {

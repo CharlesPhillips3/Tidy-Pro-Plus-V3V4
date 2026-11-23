@@ -653,23 +653,30 @@ static void drawDeskPanel(Canvas * cv)
   cv->drawText(&FONT_std_14, x, y, b);
 #ifdef TIDYOS_HTML5
   {                                                          // MP3, volume - / +, next: evenly between the time and the drop box
-    int left = x + clockW, right = r.X2 - 100;                   // the space between the time and the drop box
-    int mw = 26, sw = 13, g = 3, bh = 20, by = r.Y1 + 9;
-    int total = mw + 3 * sw + 3 * g;
+    int left = x + clockW, right = r.X2 - 92;               // the space between the time and the drop box
+    const int D = 16, mw = 28, g = 3, by = r.Y1 + 11;        // round buttons (MP3 a pill), 16 px tall
+    int total = mw + 3 * D + 3 * g;
     int gap = imax(2, (right - left - total) / 2);           // the same space each side
     int bx = left + gap;
-    s_mp3Btn    = Rect(bx, by, bx + mw - 1, by + bh);
-    s_volDnBtn  = Rect(s_mp3Btn.X2 + 1 + g, by, s_mp3Btn.X2 + g + sw, by + bh);
-    s_volUpBtn  = Rect(s_volDnBtn.X2 + 1 + g, by, s_volDnBtn.X2 + g + sw, by + bh);
-    s_nextBtn   = Rect(s_volUpBtn.X2 + 1 + g, by, s_volUpBtn.X2 + g + sw, by + bh);
+    s_mp3Btn    = Rect(bx, by, bx + mw - 1, by + D - 1);
+    s_volDnBtn  = Rect(s_mp3Btn.X2 + 1 + g, by, s_mp3Btn.X2 + g + D, by + D - 1);
+    s_volUpBtn  = Rect(s_volDnBtn.X2 + 1 + g, by, s_volDnBtn.X2 + g + D, by + D - 1);
+    s_nextBtn   = Rect(s_volUpBtn.X2 + 1 + g, by, s_volUpBtn.X2 + g + D, by + D - 1);
     bool on = musicQuickPlaying();
     auto btn = [&](const Rect & q, const char * t, bool hot) {
-      cv->setBrushColor(hot ? T.accent : T.face);
-      cv->fillRectangle(q.X1, q.Y1, q.X2, q.Y2);
-      cv->setPenColor(T.shadow);
-      cv->drawRectangle(q.X1, q.Y1, q.X2, q.Y2);
+      int w = q.width(), h = q.height(), cy = q.Y1 + h / 2;
+      RGB888 fill = hot ? T.accent : T.face;
+      // a circle, or a pill: two half-circle ends joined by a box
+      cv->setPenColor(T.shadow); cv->setBrushColor(fill);
+      cv->fillEllipse(q.X1 + h / 2, cy, h, h); cv->drawEllipse(q.X1 + h / 2, cy, h, h);
+      if (w > h) {
+        cv->fillEllipse(q.X2 - h / 2, cy, h, h); cv->drawEllipse(q.X2 - h / 2, cy, h, h);
+        cv->fillRectangle(q.X1 + h / 2, q.Y1, q.X2 - h / 2, q.Y2);
+        cv->drawLine(q.X1 + h / 2, q.Y1, q.X2 - h / 2, q.Y1);
+        cv->drawLine(q.X1 + h / 2, q.Y2, q.X2 - h / 2, q.Y2);
+      }
       cv->setPenColor(hot ? T.accentText : T.text);
-      cv->drawText(&FONT_std_12, (q.X1 + q.X2 + 1) / 2 - cv->textExtent(&FONT_std_12, t) / 2, q.Y1 + 4, t);
+      cv->drawText(&FONT_std_12, (q.X1 + q.X2 + 1) / 2 - cv->textExtent(&FONT_std_12, t) / 2, cy - 6, t);
     };
     btn(s_mp3Btn, "MP3", on);
     btn(s_volDnBtn, "-", false);
@@ -678,7 +685,7 @@ static void drawDeskPanel(Canvas * cv)
     cv->setBrushColor(T.win);
   }
   {                                                          // the drop box, right of the time
-    int bx1 = r.X2 - 100, by1 = r.Y1 + 6, bx2 = r.X2 - 8, by2 = r.Y1 + 34;
+    int bx1 = r.X2 - 92, by1 = r.Y1 + 6, bx2 = r.X2 - 8, by2 = r.Y1 + 34;
     cv->setPenColor(T.text);
     for (int k = bx1; k < bx2; k += 6) { cv->drawLine(k, by1, imin(k + 3, bx2), by1); cv->drawLine(k, by2, imin(k + 3, bx2), by2); }
     for (int k = by1; k < by2; k += 6) { cv->drawLine(bx1, k, bx1, imin(k + 3, by2)); cv->drawLine(bx2, k, bx2, imin(k + 3, by2)); }
@@ -693,6 +700,7 @@ static void drawDeskPanel(Canvas * cv)
       char l1[24], l2[100];
       if (s_dropNoteN > 1) snprintf(l1, sizeof(l1), "%d added to Incoming", s_dropNoteN);
       else strlcpy(l1, "Added to Incoming", sizeof(l1));
+      while (strlen(l1) > 3 && cv->textExtent(&FONT_std_12, l1) > bx2 - bx1 - 10) l1[strlen(l1) - 1] = 0;
       strlcpy(l2, s_dropNote, sizeof(l2));
       while (strlen(l2) > 3 && cv->textExtent(&FONT_std_12, l2) > bx2 - bx1 - 10) { l2[strlen(l2) - 4] = 0; strlcat(l2, "...", sizeof(l2)); }
       cv->setPenColor(T.accent);

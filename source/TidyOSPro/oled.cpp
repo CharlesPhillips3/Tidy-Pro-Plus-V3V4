@@ -363,7 +363,26 @@ static void draw(int page, bool held, uint32_t pageAt, bool resetHint)
   if (s_swRun && page != P_STOPWATCH) { swFmt(r, sizeof(r), swMs(), false); strcat(r, " "); }
   char pg[12]; snprintf(pg, sizeof(pg), "%s%d/%d", held ? "HOLD " : "", page + 1, P_COUNT);
   strlcat(r, pg, sizeof(r));
-  s_oled.drawStr(128 - s_oled.getStrWidth(r), 7, r);
+  int rx = 128 - s_oled.getStrWidth(r);
+  s_oled.drawStr(rx, 7, r);
+  {                                                            // battery: a little gauge, its % beside it
+    int pct = batteryPct();
+    int left = s_oled.getStrWidth(TITLE[page]) + 3;
+    s_oled.setFont(u8g2_font_4x6_tr);
+    char t[8];
+    if (pct < 0) strlcpy(t, "USB", sizeof(t)); else snprintf(t, sizeof(t), "%d%%", pct);
+    int tw = s_oled.getStrWidth(t), w = pct < 0 ? tw : 14 + 1 + tw;
+    int bx = rx - 4 - w;
+    if (bx >= left) {
+      if (pct >= 0) {
+        s_oled.drawFrame(bx, 1, 12, 7);
+        s_oled.drawBox(bx + 12, 3, 2, 3);
+        s_oled.drawBox(bx + 1, 2, (pct * 10 + 50) / 100, 5);
+        s_oled.drawStr(bx + 15, 7, t);
+      } else s_oled.drawStr(bx, 7, t);
+    }
+    s_oled.setFont(u8g2_font_5x8_tr);
+  }
   s_oled.drawHLine(0, 9, 128);
   switch (page) {
     case P_ADDRESS: pageAddress(); break;
@@ -391,8 +410,10 @@ static void oledTask(void *)
   bool prgWas = false, swallow = false, longDone = false, resetDone = false;
   uint32_t downAt = 0, tapAt = 0; int taps = 0;
   uint32_t resetShowUntil = 0;
+  uint32_t battAt = 0;
   for (;;) {
     uint32_t now = millis();
+    if (!battAt || now - battAt > 10000) { battAt = now; batteryRead(); }   // the battery, every 10 s
     bool prg = digitalRead(PIN_PRG) == LOW;
     bool redraw = false;
     if (prg && !prgWas) {                                    // pressed

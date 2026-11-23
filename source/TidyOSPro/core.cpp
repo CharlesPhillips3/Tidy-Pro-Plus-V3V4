@@ -1193,10 +1193,26 @@ private:
         int cw = cv->textExtent(f, ":"), dw = cv->textExtent(f, "00");
         int left = s_ramEnd > 0 ? s_ramEnd + 10 : SCREEN_W / 2;
         int wSec = cv->textExtent(f, "12") + cw + dw + cw + dw + cv->textExtent(f, " PM");
-        bool secs = SCREEN_W - 8 - wSec >= left + (int)s_minimized.size() * 30;
+        // the battery, just left of the clock (on USB with no battery: nothing)
+        int bp = batteryPct();
+        char bt[8]; snprintf(bt, sizeof(bt), "%d%%", bp < 0 ? 0 : bp);
+        int bw = bp >= 0 ? 20 + cv->textExtent(&FONT_std_12, bt) + 10 : 0;
+        bool secs = SCREEN_W - 8 - wSec - bw >= left + (int)s_minimized.size() * 30;
         int w = cv->textExtent(f, hs) + cw + dw + (secs ? cw + dw : 0) + cv->textExtent(f, ap);
         int cx = SCREEN_W - w - 8, cy = by + 3;
-        s_clockX = cx;
+        s_clockX = cx - bw;
+        if (bp >= 0) {
+          int bx = cx - bw, iy = by + (BAR_H - 10) / 2;
+          cv->setPenColor(T.text);
+          cv->drawRectangle(bx, iy, bx + 15, iy + 9);                  // the body
+          cv->setBrushColor(T.text);
+          cv->fillRectangle(bx + 16, iy + 3, bx + 17, iy + 6);         // the nub
+          cv->setBrushColor(bp <= 15 ? RGB888(220, 60, 50) : T.text);
+          int fw = (bp * 14 + 50) / 100;
+          if (fw > 0) cv->fillRectangle(bx + 1, iy + 1, bx + fw, iy + 8);
+          cv->setBrushColor(T.face);
+          cv->drawText(&FONT_std_12, bx + 21, by + 4, bt);
+        }
         bool on = true;                                  // steady colon (no blinking); the seconds tick every second
         cv->drawText(f, cx, cy, hs); cx += cv->textExtent(f, hs);
         if (on) cv->drawText(f, cx, cy, ":"); cx += cw;
@@ -1289,6 +1305,36 @@ static void startDisplay()
 }
 
 const char * gSDWiring = "none";
+
+// ---- battery (the same reading as The Shelf): VBAT on GPIO 1 through a 390k / 100k divider, switched on
+// by ADC_CTRL (GPIO 37) on the V4. (The V4-R8's GPIO 37 belongs to its PSRAM: just read GPIO 1.)
+static volatile int s_batPct = -1;           // -1 = no battery (on USB)
+static float s_battV = -1;
+int batteryPct() { return s_batPct; }
+void batteryRead()                           // every ~10 s (the OLED task)
+{
+#ifdef TIDYOS_V4
+  uint32_t mv = 0;
+#if !CONFIG_SPIRAM_MODE_OCT
+  pinMode(PIN_ADC_CTRL, OUTPUT); digitalWrite(PIN_ADC_CTRL, HIGH); delay(5);
+#endif
+  for (int i = 0; i < 8; i++) mv += analogReadMilliVolts(PIN_VBAT);
+#if !CONFIG_SPIRAM_MODE_OCT
+  digitalWrite(PIN_ADC_CTRL, LOW);
+#endif
+  float v = (mv / 8.0f) * 4.9f * 1.045f / 1000.0f;
+  s_battV = (s_battV < 0 || fabsf(v - s_battV) > 0.5f) ? v : s_battV * 0.7f + v * 0.3f;
+  int pct = -1;
+  if (s_battV >= 2.8f && s_battV <= 4.45f) {
+    static const float V[] = { 4.20f, 4.10f, 4.00f, 3.90f, 3.80f, 3.70f, 3.60f, 3.50f, 3.40f, 3.30f };
+    static const int P[] = { 100, 90, 80, 65, 50, 35, 20, 10, 5, 0 };
+    pct = 0;
+    if (s_battV >= V[0]) pct = 100;
+    else for (int i = 1; i < 10; i++) if (s_battV >= V[i]) { pct = P[i] + (int)((s_battV - V[i]) / (V[i - 1] - V[i]) * (P[i - 1] - P[i])); break; }
+  }
+  s_batPct = pct;
+#endif
+}
 bool gpsSwitchOn() { return gSet.gpsOn; }
 
 // Same method as The Shelf on an ESP32 (Arduino SD library, tried at 10, 4 and 1 MHz):

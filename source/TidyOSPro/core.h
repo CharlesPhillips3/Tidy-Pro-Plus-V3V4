@@ -72,6 +72,8 @@ struct Settings {
 };
 extern Settings gSet;
 void settingsLoad();
+int  batteryPct();       // battery %, or -1 on USB (no battery)
+void batteryRead();
 void settingsReset();
 void settingsSave();
 

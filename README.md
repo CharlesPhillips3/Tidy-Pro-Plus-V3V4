@@ -26,7 +26,12 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.26. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.27. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.27: battery gauge, round music buttons
+
+* Battery gauge on the taskbar (left of the clock, red at 15% or less) and at the top of every OLED page. On USB with no battery the taskbar shows nothing and the OLED says USB. Read every 10 s, the same way The Shelf does.
+* The desktop's music buttons are round (MP3 is a pill).
 
 ### 3.4.26: N for the next song
 
