@@ -26,7 +26,12 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.14. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.15. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.15 / The Shelf 1.19.2: an in-line card module the other way round works too
+- TidyOS Pro and the dual-boot Shelf also look for the card with the in-line module turned round (CS 39,
+  MOSI 40, CLK 41, MISO 42): easy to do when it's fitted from the bottom of the board, and usually soldered by
+  the time anyone finds out. The power jumpers are the same either way.
 
 ### The Shelf (dual boot) is now 1.19.1
 - The Shelf that's installed next to TidyOS Pro was an old 1.10.12 copy that only looked for the microSD card on

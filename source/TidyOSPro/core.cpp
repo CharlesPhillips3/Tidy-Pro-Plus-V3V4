@@ -1294,7 +1294,10 @@ static bool mountAnySD()
 #ifdef TIDYOS_V4
   if (mountSD(SD_MISO, SD_MOSI, SD_CLK, SD_CS, "V4 (CS 4, MISO 6, CLK 47, MOSI 48)")) return true;
   if (gnssPresent()) return false;     // 39-42 belong to the GNSS module
-  return mountSD(SD_INLINE_MISO, SD_INLINE_MOSI, SD_INLINE_CLK, SD_INLINE_CS, "Shelf in-line (CS 42, MOSI 41, CLK 40, MISO 39)");
+  if (mountSD(SD_INLINE_MISO, SD_INLINE_MOSI, SD_INLINE_CLK, SD_INLINE_CS, "Shelf in-line (CS 42, MOSI 41, CLK 40, MISO 39)")) return true;
+  // the in-line module the other way round (easy to do when it's fitted from the bottom of the board, and
+  // often soldered before anyone notices): the four pins are ordinary GPIOs, so they work reversed too
+  return mountSD(42, 40, 41, 39, "in-line, module turned round (CS 39, MOSI 40, CLK 41, MISO 42)");
 #elif defined(TIDYOS_HTML5)
   return mountSD(SD_INLINE_MISO, SD_INLINE_MOSI, SD_INLINE_CLK, SD_INLINE_CS, "in-line (19/18/5/17)") ||
          mountSD(SD_MISO, SD_MOSI, SD_CLK, SD_CS, "classic (16/17/14/13)");

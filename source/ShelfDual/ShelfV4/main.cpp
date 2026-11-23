@@ -344,6 +344,18 @@ static void setupStorage() {
     if (onSD && SD.cardType() == CARD_NONE) { SD.end(); onSD = false; }
     if (onSD) { sdOnAlt = true; Serial.println("[shelf] microSD found on CS 4, MISO 6, CLK 47, MOSI 48"); }
   }
+  // The in-line module put on the other way round (CS on 39 ... MISO on 42): easy to do when it's fitted
+  // from the bottom of the board, and it's often soldered by the time anyone notices. The four pins are
+  // ordinary GPIOs, so they work either way round.
+  if (!onSD) {
+    SD.end(); sdSPI.end();
+    sdSPI.begin(40 + 1, 42, 40, 39);                   // CLK 41, MISO 42, MOSI 40, CS 39
+    for (int pin : {42, 40, 39}) gpio_pullup_en((gpio_num_t)pin);
+    if (SD.begin(39, sdSPI, 10000000, "/sd", 10)) onSD = true;
+    else if (SD.begin(39, sdSPI, 4000000, "/sd", 10)) onSD = true;
+    if (onSD && SD.cardType() == CARD_NONE) { SD.end(); onSD = false; }
+    if (onSD) Serial.println("[shelf] microSD found on the in-line pins, module turned round (CS 39, MOSI 40, CLK 41, MISO 42)");
+  }
 #endif
   if (onSD) store = &SD;
   else {
