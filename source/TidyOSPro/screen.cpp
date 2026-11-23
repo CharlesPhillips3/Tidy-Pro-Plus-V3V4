@@ -14,6 +14,7 @@
 #include <WiFi.h>
 #include "esp_wifi.h"
 #include <DNSServer.h>
+#include "freertos/stream_buffer.h"
 #include "lwip/sockets.h"
 #include "mbedtls/sha1.h"
 #include "mbedtls/base64.h"
@@ -91,6 +92,17 @@ function fit(){var r=window.devicePixelRatio||1,w=innerWidth,h=innerHeight-36,s=
  document.getElementById('bz').textContent=mode==1?'Size: 1:1':mode==2?'Size: sharp':'Size: fit';}
 addEventListener('resize',fit);
 function send(a){if(ws&&ws.readyState==1)ws.send(new Uint8Array(a));}
+// the board has no internet of its own (its hotspot, at work or in the car): it asks this page to fetch a file
+// (an update, say) over this device's internet, and the page passes it on in pieces. [23 status total] [22 data]... [24 ok]
+function relay(url){var w0=ws;fetch(url,{cache:'no-store'}).then(function(r){var t=+(r.headers.get('content-length')||0);
+  send([23,r.status&255,r.status>>8,t&255,t>>8&255,t>>16&255,t>>>24]);if(!r.ok||!r.body){send([24,0]);return;}
+  var rd=r.body.getReader();
+  (function pump(){if(ws!==w0||ws.readyState!=1){try{rd.cancel();}catch(e){}return;}
+   if(ws.bufferedAmount>65536){setTimeout(pump,15);return;}
+   rd.read().then(function(x){if(x.done){send([24,1]);return;}var v=x.value;
+    for(var i=0;i<v.length;i+=4000){var n=Math.min(4000,v.length-i),c=new Uint8Array(n+1);c[0]=22;c.set(v.subarray(i,i+n),1);ws.send(c);}pump();})
+   .catch(function(){send([24,0]);});})();})
+ .catch(function(e){send([21].concat(Array.from(new TextEncoder().encode('relay: could not fetch '+url+' ('+e+')'))));send([23,0,0,0,0,0,0]);send([24,0]);});}
 function connect(){
  kicked=false;if(!lostAt)show('Connecting to TidyOS Pro...');
  ws=new WebSocket('ws://'+location.host+'/ws');ws.binaryType='arraybuffer';
@@ -479,6 +491,7 @@ function dropNext(){var f0=dropQ.shift();if(!f0){return;}
   .catch(function(e){if(++tries<6&&typeof e!='number'){setTimeout(put,800);return;}   // the board's file server may still be starting
    note('Couldn\'t send '+nm+(typeof e=='number'?' (TidyOS said '+e+')':' (no answer from TidyOS)')+'.',8000);dropNext();});})();});}
 function media(t){var k=t.charAt(0),v=t.substr(2),iv=document.getElementById('iv');
+ if(k=='F'){relay(v);return;}
  if(midiCur&&(k=='p'||k=='r'||k=='s'||k=='v')){if(k=='p'){midiCur.paused=true;midiCur.ctx.suspend();midiReport();}else if(k=='r'){midiCur.paused=false;midiCur.ctx.resume();}else if(k=='s'){midiStop();send([8,255,0,0,0,0]);}else midiCur.out.gain.value=Math.max(0,Math.min(1,+v));return;}
  if(k=='m'){midiPlay(mUrl(v),au?au.volume:0.8);return;}
  if(k=='o'){var t=v.split('\t');openBanner(mUrl(t[0]),t[1]||'');return;}
@@ -698,6 +711,12 @@ static size_t queueChanges()
 }
 
 // browser -> TidyOS
+// files fetched by the page for us (screenRelayGet)
+static StreamBufferHandle_t s_rlBuf = nullptr;
+static volatile bool s_rlOn = false;
+static volatile int  s_rlStatus = -1, s_rlEnd = 0;
+static volatile uint32_t s_rlTotal = 0;
+
 static bool pollInput(WiFiClient & c)
 {
   while (c.available() >= 2) {
@@ -709,7 +728,7 @@ static bool pollInput(WiFiClient & c)
     else if (len == 127) return false;
     uint8_t mask[4] = { 0, 0, 0, 0 };
     if ((h[1] & 128) && !readExact(c, mask, 4)) return false;
-    static uint8_t p[1100];                        // replies from the page (Git-Store lists) can be long
+    static uint8_t p[4200];                        // replies from the page (Git-Store lists) can be long; relayed files come in 4000-byte pieces
     size_t keep = std::min(len, sizeof(p));
     if (!readExact(c, p, keep)) return false;
     for (size_t i = keep; i < len; ++i) { uint8_t junk; if (!readExact(c, &junk, 1)) return false; }
@@ -732,6 +751,14 @@ static bool pollInput(WiFiClient & c)
       case 17: { p[keep < sizeof(p) ? keep : sizeof(p) - 1] = 0; deskTempsFromPage((const char *)p + 1); break; } // temperatures, last 4 days
       case 19: { p[keep < sizeof(p) ? keep : sizeof(p) - 1] = 0; deskFieldFromPage((const char *)p + 1); break; } // TidyOS Pro field conditions
       case 14: { p[keep < sizeof(p) ? keep : sizeof(p) - 1] = 0; deskNewsFromPage((const char *)p + 1); break; } // news headlines
+      case 22:                                                  // a piece of a file the page fetched for us
+        if (s_rlOn && s_rlBuf) {
+          size_t off = 1;
+          while (off < keep && s_rlOn) off += xStreamBufferSend(s_rlBuf, p + off, keep - off, pdMS_TO_TICKS(200));
+        }
+        break;
+      case 23: if (keep >= 7) { s_rlTotal = p[3] | (p[4] << 8) | (p[5] << 16) | ((uint32_t)p[6] << 24); s_rlStatus = p[1] | (p[2] << 8); } break;
+      case 24: s_rlEnd = keep >= 2 && p[1] ? 1 : 2; break;
       case 21: { p[keep < sizeof(p) ? keep : sizeof(p) - 1] = 0; Serial.printf("[browser] %s\n", (const char *)p + 1); break; }   // the page's own notes (music errors)
       case 5: inputWebReleaseAll(); break;
       case 6: if (keep >= 5) netSetClockFrom(p[1] | (p[2] << 8) | (p[3] << 16) | ((uint32_t)p[4] << 24)); break;
@@ -1038,6 +1065,34 @@ void screenBegin()
 }
 
 bool screenViewer() { return s_view; }
+
+// Gets a file over the internet of the device showing TidyOS's screen (see relay() in the page). Calls sink
+// with each piece and the total size; returns the HTTP status (200 = all of it came), or below 0 if the page
+// couldn't (no page open, no answer, it stopped part way). For a task other than the screen's own.
+int screenRelayGet(const char * url, const std::function<bool(const uint8_t *, size_t, size_t)> & sink)
+{
+  if (!s_view) return -10;
+  if (!s_rlBuf) s_rlBuf = xStreamBufferCreate(32768, 1);
+  if (!s_rlBuf) return -15;
+  s_rlOn = false;
+  xStreamBufferReset(s_rlBuf);
+  s_rlStatus = -1; s_rlTotal = 0; s_rlEnd = 0;
+  s_rlOn = true;
+  screenMedia(std::string("F ") + url);
+  uint32_t t0 = millis();
+  while (s_rlStatus < 0 && s_view && millis() - t0 < 25000) delay(20);
+  if (s_rlStatus != 200) { int st = s_rlStatus; s_rlOn = false; Serial.printf("[TidyOS] browser fetch of %s: %d\n", url, st); return st < 0 ? -11 : st == 0 ? -16 : st; }
+  static uint8_t buf[2048];
+  uint32_t last = millis();
+  for (;;) {
+    size_t n = xStreamBufferReceive(s_rlBuf, buf, sizeof(buf), pdMS_TO_TICKS(100));
+    if (n) { last = millis(); if (!sink(buf, n, s_rlTotal)) { s_rlOn = false; return -12; } continue; }
+    if (s_rlEnd && xStreamBufferIsEmpty(s_rlBuf)) break;
+    if (!s_view || millis() - last > 30000) { s_rlOn = false; return -13; }
+  }
+  s_rlOn = false;
+  return s_rlEnd == 1 ? 200 : -14;
+}
 
 void screenMedia(const std::string & cmd)
 {

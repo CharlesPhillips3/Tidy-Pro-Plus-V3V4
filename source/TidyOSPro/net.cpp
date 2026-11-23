@@ -610,7 +610,18 @@ static void fetchTaskBody(void * arg)
 {
   std::string url = s_url, err, finalUrl;
   std::string out;
-  if (!netConnected()) {
+  if (!netConnected() && screenViewer()) {
+    // only TidyOS's own hotspot: the web page showing TidyOS fetches the page over its device's internet.
+    // (Browsers only allow that for sites that permit it - many don't. https is fine this way.)
+    HtmlText * h = new HtmlText;
+    h->base = url;
+    int st = screenRelayGet(url.c_str(), [&](const uint8_t * d, size_t n, size_t) { h->feed((const char *)d, n); return h->text.size() < h->maxText; });
+    if (st == 200 || st == -12) out = h->result();
+    else if (st == -16 || st == -11) err = "No internet here, and this site doesn't let your web browser fetch it for TidyOS. Join Wi-Fi in Settings for the full web.";
+    else err = "Your web browser couldn't get the page (" + std::to_string(st) + ").";
+    finalUrl = url;
+    delete h;
+  } else if (!netConnected()) {
     err = "Not connected to Wi-Fi. Open Settings to connect.";
   } else if (gSet.proxy.length()) {
     // Browser helper on The Shelf / a Pi does the heavy lifting (https, big pages)

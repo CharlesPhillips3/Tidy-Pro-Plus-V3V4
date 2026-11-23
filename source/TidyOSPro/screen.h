@@ -1,6 +1,9 @@
 // TidyOS HTML5 edition: the desktop is shown and controlled in a web browser
 #pragma once
 #include <string>
+#include <functional>
+#include <stdint.h>
+#include <stddef.h>
 
 #define SCREEN_AP_NAME (boardId().c_str())   // each board its own hotspot name, e.g. "TidyOS-A93160"
 #define SCREEN_AP_PASS "tidyos123"
@@ -10,6 +13,8 @@ void        screenBegin();       // start the web screen server (+ setup hotspot
 bool        screenViewer();      // a browser is connected
 bool        screenApOn();        // the TidyOS-Setup hotspot is running
 bool        screenStaPaused();   // not looking for home Wi-Fi while devices use the hotspot
+// a file fetched by the browser showing the screen, over its own internet: HTTP status, or < 0
+int         screenRelayGet(const char * url, const std::function<bool(const uint8_t *, size_t, size_t)> & sink);
 void        screenHotspot(bool on); // keep the hotspot running (Settings)
 void        screenTrim();           // free what the web screen isn't using
 std::string screenUrl();         // where to open the desktop, e.g. http://192.168.1.40
@@ -30,6 +35,7 @@ inline void        screenBegin()  {}
 inline bool        screenViewer() { return false; }
 inline bool        screenApOn()   { return false; }
 inline bool        screenStaPaused() { return false; }
+inline int         screenRelayGet(const char *, const std::function<bool(const uint8_t *, size_t, size_t)> &) { return -10; }
 inline void        screenHotspot(bool) {}
 inline void        screenTrim() {}
 inline std::string screenUrl()    { return ""; }

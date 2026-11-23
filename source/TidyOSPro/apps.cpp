@@ -2123,7 +2123,7 @@ public:
       }
       if (gApp->messageBox("Updates", 
 #ifdef TIDYOS_V4
-        "Restart and check GitHub? Needs Wi-Fi (no SD card needed)."
+        "Restart and check GitHub? Uses Wi-Fi - or, on the TidyOS hotspot, this browser's internet (keep this page open)."
 #else
         "Restart and check GitHub? Needs Wi-Fi and the SD card."
 #endif

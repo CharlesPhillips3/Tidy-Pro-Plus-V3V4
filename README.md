@@ -26,7 +26,15 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.23. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.24. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.24 / The Shelf 1.19.6: internet through your web browser
+
+* When TidyOS Pro has no internet of its own (only its hotspot: at work, in the car), the web page showing its desktop now fetches things over that phone's or laptop's internet and passes them to the board:
+  * **Settings > Check for updates** works on the hotspot: the page downloads the update from GitHub, and the board checks and installs it as usual. Keep the TidyOS page open while it runs.
+  * TidyOS's own **web browser app** gets pages the same way, for sites that allow it (browsers only let a page fetch from sites that permit it; many don't). https sites are fine this way.
+  * (The weather, sun times, headlines and city temperatures already came this way.)
+* The Shelf's update page already downloads through your browser; it now says so. On its own Wi-Fi it works whenever your phone or laptop has cellular data or another connection.
 
 ### 3.4.23: start-up progress on the board's own screen
 

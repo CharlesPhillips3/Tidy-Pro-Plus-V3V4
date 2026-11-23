@@ -21,6 +21,7 @@
 #include "config.h"
 #include "core.h"
 #include "update.h"
+#include "screen.h"
 #include "update_roots_der.h"
 #include <memory>
 #include <new>
@@ -322,19 +323,41 @@ void updateRun(void (*status)(const char * msg, int percent))
 
   status("Joining Wi-Fi...", 5);
   uint32_t t0 = millis();
-  while (WiFi.status() != WL_CONNECTED && millis() - t0 < 30000) delay(200);
-  if (WiFi.status() != WL_CONNECTED) finish(status, "No Wi-Fi - set it up in Settings first", 0, 6000);
+  while (WiFi.status() != WL_CONNECTED && !(gSet.ssid.length() == 0 && screenViewer()) && millis() - t0 < 30000) delay(200);
+  // No internet of its own (only its hotspot: at work, in the car): the web page showing TidyOS fetches
+  // the update over that phone's or laptop's internet and passes it on. (The download is checked the same way.)
+  bool viaBrowser = false;
+  auto useBrowser = [&]() -> bool {
+    status("No internet here - getting it through your web browser (keep the TidyOS page open)...", 8);
+    uint32_t w0 = millis();
+    while (!screenViewer() && millis() - w0 < 90000) delay(200);       // (the page reconnects after the restart)
+    if (!screenViewer()) return false;
+    delay(1500);                                                       // let the page settle
+    viaBrowser = true;
+    return true;
+  };
+  auto get = [&](const std::string & path, const std::function<bool(const uint8_t *, size_t, size_t)> & sink) -> int {
+    if (viaBrowser) return screenRelayGet((std::string("https://") + UPD_HOST + path).c_str(), sink);
+    return httpsGet(UPD_HOST, path, sink);
+  };
+  if (WiFi.status() != WL_CONNECTED && !useBrowser())
+    finish(status, "No internet - join Wi-Fi in Settings, or open TidyOS in a browser that has internet", 0, 8000);
 
-  status("Checking GitHub for a new version...", 10);
+  status(viaBrowser ? "Checking GitHub for a new version (through your browser)..." : "Checking GitHub for a new version...", 10);
   std::string js;
-  int code = httpsGet(UPD_HOST, UPD_BASE UPD_MANIFEST, [&](const uint8_t * d, size_t n, size_t) {
+  auto manifest = [&](const uint8_t * d, size_t n, size_t) {
     if (js.size() + n > 8192) return false;
     js.append((const char *)d, n);
     return true;
-  });
+  };
+  int code = get(UPD_BASE UPD_MANIFEST, manifest);
+  if (code != 200 && !viaBrowser && useBrowser()) {      // on a Wi-Fi without internet: try the browser's
+    js.clear();
+    code = get(UPD_BASE UPD_MANIFEST, manifest);
+  }
   if (code != 200) {
     if (code == -1 && s_lastErr[0]) snprintf(b, sizeof(b), "GitHub: %.80s", s_lastErr);
-    else snprintf(b, sizeof(b), "Couldn't reach GitHub (%d) - try later", code);
+    else snprintf(b, sizeof(b), viaBrowser ? "Your browser couldn't reach GitHub (%d) - try later" : "Couldn't reach GitHub (%d) - try later", code);
     finish(status, b, 0, 9000);
   }
   size_t sec = js.find("\"tidyos\"");
@@ -387,12 +410,12 @@ void updateRun(void (*status)(const char * msg, int percent))
   size_t done = 0;
   int lastPct = -1;
   bool writeOk = true;
-  code = httpsGet(UPD_HOST, UPD_BASE + app, [&](const uint8_t * d, size_t n, size_t total) {
+  code = get(UPD_BASE + app, [&](const uint8_t * d, size_t n, size_t total) {
     if (fwrite(d, 1, n, f) != n) { writeOk = false; return false; }
     mbedtls_sha256_update_ret(&ctx, d, n);
     done += n;
     int pct = 15 + (int)((uint64_t)done * 80 / (total ? total : size));
-    if (pct != lastPct) { lastPct = pct; char m[80]; snprintf(m, sizeof(m), "Downloading TidyOS %s ... %u KB", ver.c_str(), (unsigned)(done / 1024)); status(m, pct); }
+    if (pct != lastPct) { lastPct = pct; char m[80]; snprintf(m, sizeof(m), viaBrowser ? "Downloading TidyOS %s through your browser ... %u KB" : "Downloading TidyOS %s ... %u KB", ver.c_str(), (unsigned)(done / 1024)); status(m, pct); }
     return true;
   });
   fclose(f);

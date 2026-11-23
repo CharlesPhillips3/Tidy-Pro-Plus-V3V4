@@ -182,7 +182,7 @@ button.sec{background:transparent;color:var(--text);border:1px solid var(--divid
   <div class="row"><span>Installed</span><span id="fw">&hellip;</span></div>
   <div class="row"><span>Newest</span><span id="latest">&mdash;</span></div>
   <button id="check">Check for update</button><button id="install" hidden></button>
-  <p class="muted" style="margin:12px 0 0">Checking needs the internet. On the board's own Wi-Fi, use a file instead.</p>
+  <p class="muted" style="margin:12px 0 0">This uses your browser's internet, so it works on the board's own Wi-Fi too when your phone or laptop has its own connection (cellular data, say). With no internet at all, use a file instead.</p>
 </div>
 <div class="card">
   <b>Update from a file</b>
@@ -226,7 +226,7 @@ $('check').onclick=async()=>{if(busy)return;lock(true);try{say('Checking…','',
   $('latest').textContent='v'+latest.version;const up=newer(latest.version,info.fw);
   $('install').hidden=false;$('install').textContent=up?'Install v'+latest.version:'Reinstall v'+latest.version;
   say(up?'v'+latest.version+' is ready to install.':'This board is up to date.',up?'good':'',0)}
-  catch(e){say(/Failed to fetch|NetworkError|Load failed/i.test(e.message)?"Couldn't reach the internet from this browser. On the board's own Wi-Fi, use Update from a file.":e.message,'bad')}
+  catch(e){say(/Failed to fetch|NetworkError|Load failed/i.test(e.message)?"Couldn't reach the internet from this browser. Turn on cellular data (or use Update from a file).":e.message,'bad')}
   finally{lock(false)}};
 $('install').onclick=async()=>{if(busy||!latest)return;lock(true);try{
   const app=await download(BASE+'ota/'+latest.app,'firmware',0,.2),www=await download(BASE+'ota/'+latest.www,'web app',.2,.35);
