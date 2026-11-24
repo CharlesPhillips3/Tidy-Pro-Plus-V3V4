@@ -2410,8 +2410,9 @@ void openMessages()
     gApp->messageBox("Messages", "Shelf messages are off. Turn them on at start-up.", "OK", nullptr, nullptr, uiMessageBoxIcon::Info);
     return;
   }
+  if (!msgStarted() && netReachable()) msgBegin();          // on the hotspot too (work, the car): the Coms mesh needs no home Wi-Fi
   if (!msgStarted()) {
-    gApp->messageBox("Messages", "Messages start once TidyOS is on your home Wi-Fi (Settings).", "OK", nullptr, nullptr, uiMessageBoxIcon::Info);
+    gApp->messageBox("Messages", "Messages start once Wi-Fi is up (home Wi-Fi, or the TidyOS hotspot).", "OK", nullptr, nullptr, uiMessageBoxIcon::Info);
     return;
   }
   if (!MessagesApp::inst) new MessagesApp();
@@ -3676,7 +3677,7 @@ public:
       set(sdInfo, "Files already on the card stay there for next time.");
     }
     show(1, gSet.meshOn, "ON", "OFF");
-    if (gSet.meshOn && !msgStarted()) set(note[1], "Starts once TidyOS is on your home Wi-Fi. Coms boards nearby.");
+    if (gSet.meshOn && !msgStarted()) set(note[1], "Starts once Wi-Fi is up (home or the TidyOS hotspot). Coms boards nearby.");
     else set(note[1], gSet.meshOn ? (rf::radioOk() && gSet.mesh900 ? "Talking with Coms boards nearby (2.4 GHz + 900 MHz LoRa)." : "Talking with Coms boards nearby (2.4 GHz). Uses a few KB.") : "Off: no Coms mesh. Shelf messages on Wi-Fi still work.");
     show(2, gSet.ledOn, "ON", "OFF");
     set(note[2], gSet.ledOn ? "Breathing = ready, flicker = SD card busy. Uses ~2 KB." : "Off: the white LED stays dark. Saves ~2 KB.");

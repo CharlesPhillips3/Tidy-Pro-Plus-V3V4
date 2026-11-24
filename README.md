@@ -26,7 +26,13 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.27. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.28. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.28: Messages on the hotspot
+
+* Messages and the Coms mesh (2.4 GHz and 900 MHz) now work when TidyOS is only on its own hotspot (work, the car). They start by themselves there, and the mesh uses the hotspot's side of Wi-Fi, switching back to home Wi-Fi when it joins.
+* The hotspot now uses Wi-Fi channel 1, the same as The Shelf's own Wi-Fi, so TidyOS and Shelf boards on their own Wi-Fi hear each other over the 2.4 GHz mesh. (900 MHz works whatever the channel.)
+* Messages to Shelves at home over Wi-Fi still need home Wi-Fi.
 
 ### 3.4.27: battery gauge, round music buttons
 

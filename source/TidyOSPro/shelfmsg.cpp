@@ -3,6 +3,8 @@
 #include <WiFiUdp.h>
 #include <esp_now.h>
 #include <esp_wifi.h>
+#include "net.h"
+#include "screen.h"
 #include <Preferences.h>
 #include <mutex>
 #include <map>
@@ -674,8 +676,27 @@ static void handleNowPacket(const uint8_t * b, size_t len)
 
 static wifi_interface_t s_nowIf = WIFI_IF_STA;
 
+// whichever side of Wi-Fi is running: home Wi-Fi (STA) when joined, otherwise TidyOS's own hotspot (AP),
+// as The Shelf does. (Boards on their own Wi-Fi all use channel 1; so does TidyOS's hotspot.)
+static wifi_interface_t nowPickIf()
+{
+  wifi_mode_t m = WIFI_MODE_NULL; esp_wifi_get_mode(&m);
+  if (m == WIFI_MODE_AP) return WIFI_IF_AP;
+  if (m == WIFI_MODE_STA) return WIFI_IF_STA;
+  return WiFi.status() == WL_CONNECTED ? WIFI_IF_STA : WIFI_IF_AP;
+}
+static void nowFollowWifi()                  // Wi-Fi switched sides (joined or left home Wi-Fi): follow it
+{
+  wifi_interface_t want = nowPickIf();
+  if (want == s_nowIf) return;
+  esp_now_peer_info_t peer = {};
+  memcpy(peer.peer_addr, BCAST, 6); peer.channel = 0; peer.encrypt = false; peer.ifidx = s_nowIf = want;
+  esp_now_mod_peer(&peer);
+}
+
 static bool nowStart()
 {
+  s_nowIf = nowPickIf();
   if (!s_seen) s_seen = (uint32_t *)calloc(512, sizeof(uint32_t));
   if (!s_ring) s_ring = (NowPkt *)calloc(8, sizeof(NowPkt));
   if (!s_seen || !s_ring) return false;
@@ -712,6 +733,7 @@ static void comsPoll()
       else ++it;
     }
   }
+  if (!due.empty()) nowFollowWifi();
   for (auto & t : due) {
     if (esp_now_send(BCAST, t.buf, t.len) == ESP_OK) s_nowSent++;
     if (gSet.mesh900) rf::meshSend(t.buf, t.len);              // and over 900 MHz (V4)
@@ -736,7 +758,8 @@ static void msgTask(void *)
 
     if (!wifi) {
       if (s_udpUp) { s_udp.stop(); s_udpUp = false; }
-      setStatus(gSet.ssid.length() ? "Waiting for Wi-Fi..." : "Set up Wi-Fi in Settings to reach your Shelves.");
+      setStatus(screenApOn() ? (s_nowUp ? "On the TidyOS hotspot: the Coms mesh works; Shelves at home need home Wi-Fi." : "On the TidyOS hotspot: turn on the wireless mesh (Switches) for Coms.")
+                : gSet.ssid.length() ? "Waiting for Wi-Fi..." : "Set up Wi-Fi in Settings to reach your Shelves.");
       vTaskDelay(50 / portTICK_PERIOD_MS);
       continue;
     }
@@ -992,7 +1015,7 @@ bool comsUp() { return s_nowUp; }
 
 void comsSetOn(bool on)
 {
-  if (on && !s_msgStarted && WiFi.status() == WL_CONNECTED) msgBegin();
+  if (on && !s_msgStarted && netReachable()) msgBegin();
   if (on && s_msgStarted) loadComs();
   if (on && !s_nowUp && s_msgStarted) s_nowUp = nowStart();
   if (!on && s_nowUp) { s_nowUp = false; delay(50); esp_now_deinit(); }

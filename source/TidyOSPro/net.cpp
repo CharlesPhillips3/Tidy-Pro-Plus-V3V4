@@ -234,6 +234,8 @@ void netTick()
       }
     } netFixDns(); netApplyClock(); lastTry = millis(); if (msgWanted()) msgBegin(); }
   else if (now && !netClockSet() && millis() - lastTry > 30000) { netFixDns(); netApplyClock(); lastTry = millis(); }
+  // on the hotspot (at work, in the car) with Wi-Fi set up before: Messages and the Coms mesh start anyway
+  if (!now && screenApOn() && gSet.ssid.length() && msgWanted() && !msgStarted()) msgBegin();
   was = now;
 }
 

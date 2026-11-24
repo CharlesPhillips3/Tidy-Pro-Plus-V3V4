@@ -887,10 +887,12 @@ static void apStart()
     });
   }
   WiFi.mode(WIFI_AP_STA);
-  // channel 6, up to 4 devices; lower transmit power so the current peaks don't dip the 3.3 V supply
+  // up to 4 devices; lower transmit power so the current peaks don't dip the 3.3 V supply
   // (the hotspot only needs to reach across a room)
   static std::string apName = boardId();
-  WiFi.softAP(apName.c_str(), SCREEN_AP_PASS, 6, 0, 4);
+  // channel 1, the same as The Shelf's own Wi-Fi: the Coms mesh (ESP-NOW) only reaches boards on the same channel
+  // (on home Wi-Fi the hotspot follows the router's channel anyway)
+  WiFi.softAP(apName.c_str(), SCREEN_AP_PASS, WiFi.status() == WL_CONNECTED ? WiFi.channel() : 1, 0, 4);
   // a fixed address, the same as The Shelf's own Wi-Fi: http://10.1.1.250 (phones get 10.1.1.100 and up)
   WiFi.softAPConfig(IPAddress(10, 1, 1, 250), IPAddress(10, 1, 1, 250), IPAddress(255, 255, 255, 0), IPAddress(10, 1, 1, 100));
   WiFi.setTxPower(WIFI_POWER_11dBm);
