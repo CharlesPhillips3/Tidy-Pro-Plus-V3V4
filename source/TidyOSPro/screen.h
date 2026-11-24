@@ -16,6 +16,7 @@ bool        screenStaPaused();   // not looking for home Wi-Fi while devices use
 // a file fetched by the browser showing the screen, over its own internet: HTTP status, or < 0
 int         screenRelayGet(const char * url, const std::function<bool(const uint8_t *, size_t, size_t)> & sink);
 void        screenHotspot(bool on); // keep the hotspot running (Settings)
+void        screenHotspotMode();     // gSet.hotspotCell changed: hand out the new network settings
 void        screenTrim();           // free what the web screen isn't using
 std::string screenUrl();         // where to open the desktop, e.g. http://192.168.1.40
 // sound and full-colour pictures play in the browser:
@@ -37,6 +38,7 @@ inline bool        screenApOn()   { return false; }
 inline bool        screenStaPaused() { return false; }
 inline int         screenRelayGet(const char *, const std::function<bool(const uint8_t *, size_t, size_t)> &) { return -10; }
 inline void        screenHotspot(bool) {}
+inline void        screenHotspotMode() {}
 inline void        screenTrim() {}
 inline std::string screenUrl()    { return ""; }
 inline void        screenMedia(const std::string &) {}

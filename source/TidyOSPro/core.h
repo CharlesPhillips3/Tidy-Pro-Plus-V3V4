@@ -62,6 +62,7 @@ struct Settings {
   bool oledSleep = true;  // the board's OLED goes off after 5 minutes without a button press
   bool tidyBands = false; // Tidy: shade every other row
   bool hotspot = false;   // keep the TidyOS hotspot running (devices join TidyOS directly)
+  bool hotspotCell = false; // hotspot: let phones keep their own (cellular) internet; off = devices treat the hotspot as their network, so 10.1.1.250 always opens
   bool tidyFreeze = false;// Tidy: keep row 1 at the top
   bool alarmOn = false;   // Clock: alarm set
   int  alarmMin = 420;    // Clock: alarm time, minutes after midnight

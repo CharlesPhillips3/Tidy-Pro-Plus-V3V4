@@ -13,6 +13,23 @@ next to the V4 and V4-R8. Pick the board at the top of the flasher.
 | Heltec V4 | 16 MB / 2 MB | TidyOS Pro + The Shelf (dual boot), or either one | 7.4 MB (12.4 MB TidyOS Pro only) |
 | Heltec V4-R8 | 16 MB / 8 MB | the same as the V4 | the same |
 
+### 3.4.30: a hotspot Windows and phones can use
+
+* **10.1.1.250 opens on Windows, iPhone and Android.** Before, the hotspot gave out no gateway and no DNS, so devices
+  marked it "no internet" and many sent the browser over cellular (or Windows dropped it), and the page never loaded.
+  Now, by default, the hotspot gives itself out as gateway and DNS server and answers Windows', Apple's and Android's
+  internet checks (`connecttest.txt`, `hotspot-detect.html`, `generate_204`...) the way they expect, so the devices
+  treat it as their network. `http://tidyos` works too. Every other name gets "doesn't exist", so phones' background
+  traffic fails at once instead of filling the board's connections.
+* **The trade-off, as a choice:** Settings &rarr; *Run TidyOS Hotspot* asks **Reach TidyOS** (the above; no internet on
+  the joined device meanwhile, so no weather or news on the desktop) or **Keep phone internet** (the old way: weather
+  and news come over the phone's own data, but some phones need mobile data off, or "Stay connected", to open the page).
+  The choice is remembered and also used when the hotspot starts by itself because home Wi-Fi isn't in range.
+  Android may still say "limited connection": tap it and choose to stay connected.
+* Stronger signal (15 dBm, was 11), plain WPA2, and TidyOS stops looking for home Wi-Fi 5 s after a device joins
+  (was 15 s), so a PC that's still joining doesn't lose it.
+* The first-setup sign-in page (no Wi-Fi saved yet) is unchanged.
+
 ### What's different on the V3
 
 * **Built with `-DTIDYOS_V3`**, 8 MB flash, PSRAM off, and its own partition table (`source/TidyOSPro/partitions-v3.csv`):

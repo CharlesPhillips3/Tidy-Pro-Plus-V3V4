@@ -71,6 +71,7 @@ void settingsLoad()
   gSet.tidyBands = s_prefs.getBool("tbands", false);
   gSet.tidyFreeze = s_prefs.getBool("tfreeze", false);
   gSet.hotspot = s_prefs.getBool("hotspot", false);
+  gSet.hotspotCell = s_prefs.getBool("hscell", false);
   gSet.alarmOn   = s_prefs.getBool("alarm", false);
   gSet.alarmMin  = s_prefs.getInt("alarmm", 420);
   gSet.worldCity = s_prefs.getInt("wcity", 0);
@@ -107,6 +108,7 @@ void settingsSave()
   s_prefs.putBool("tbands", gSet.tidyBands);
   s_prefs.putBool("tfreeze", gSet.tidyFreeze);
   s_prefs.putBool("hotspot", gSet.hotspot);
+  s_prefs.putBool("hscell", gSet.hotspotCell);
   s_prefs.putBool("alarm", gSet.alarmOn);
   s_prefs.putInt("alarmm", gSet.alarmMin);
   s_prefs.putInt("wcity", gSet.worldCity);
