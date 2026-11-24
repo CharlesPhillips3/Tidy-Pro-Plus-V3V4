@@ -4,7 +4,7 @@
   "tidyos": {
     "version": "3.4.29",
     "app": "firmware/tidyos-pro-v4-full.bin",
-    "size": 3100848,
-    "sha256": "31562fc05fdd2334ded879e0014dc0c39e589e4e5bb23ef630a650edb40fb8ec"
+    "size": 3100976,
+    "sha256": "b98b63b36e0d4af6c51883fef1372125b816383b39cb1ea1edac4a29b394543a"
   }
 }

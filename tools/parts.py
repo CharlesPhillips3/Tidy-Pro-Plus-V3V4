@@ -20,12 +20,26 @@ def trim(b):
     n = len(b.rstrip(b'\xff')); n = (n + 4095) // 4096 * 4096
     return b[:n]
 out = {'flash': 16 * 1048576, 'boards': {}}
-for b in ('v4', 'v4-r8'):
-    dual = os.path.join(fw, f'pro-{b}-dual-main.bin')
+for b in ('v4', 'v4-r8', 'v3'):
+    v3 = b == 'v3'                       # Heltec V3: 8 MB, TidyOS Pro only (its boot image already has partitions-v3.csv)
+    dual = os.path.join(fw, f'pro-{b}-main.bin' if v3 else f'pro-{b}-dual-main.bin')
     if not os.path.exists(dual): continue
     d = open(dual, 'rb').read()
     pd = os.path.join(fw, 'parts', b); os.makedirs(pd, exist_ok=True)
-    info = {'boot': {'path': f'firmware/pro-{b}-boot.bin', 'offset': 0, 'size': os.path.getsize(os.path.join(fw, f'pro-{b}-boot.bin'))}}
+    info = {'flash': (8 if v3 else 16) * 1048576,
+            'boot': {'path': f'firmware/pro-{b}-boot.bin', 'offset': 0, 'size': os.path.getsize(os.path.join(fw, f'pro-{b}-boot.bin'))}}
+    if v3:
+        for name, (a, e) in SLOTS.items():
+            if name == 'menu':
+                img = trim(d[a - BASE:e - BASE]); open(os.path.join(pd, 'menu.bin'), 'wb').write(img)
+                info['menu'] = {'path': f'firmware/parts/{b}/menu.bin', 'offset': a, 'size': len(img), 'slot': e - a}
+            elif name == 'tidyos':
+                for k, p in (('tidyos', f'firmware/tidyos-pro-{b}.bin'), ('tidyosFull', f'firmware/tidyos-pro-{b}-full.bin')):
+                    app = open(os.path.join(root, p), 'rb').read(); m = app.find(b'TIDYPLUS-APPS-1\0'); assert m > 0
+                    info[k] = {'path': p, 'offset': a, 'size': len(app), 'slot': e - a, 'appList': m}
+        out['boards'][b] = info
+        print(b, {k: v['size'] for k, v in info.items() if isinstance(v, dict)})
+        continue
     # the same bootloader with the TidyOS-Pro-only table (partitions-tidyonly.csv): The Shelf's space becomes file room
     import sys; sys.path.insert(0, os.path.dirname(os.path.abspath(__file__))); import ptable
     tbl = ptable.build(ptable.parse(os.path.join(root, 'source/TidyOSPro/partitions-tidyonly.csv')))
@@ -46,7 +60,7 @@ for b in ('v4', 'v4-r8'):
         open(os.path.join(pd, name + '.bin'), 'wb').write(img)
         info[name] = {'path': f'firmware/parts/{b}/{name}.bin', 'offset': a, 'size': len(img), 'slot': e - a}
     out['boards'][b] = info
-    print(b, {k: v['size'] for k, v in info.items()})
+    print(b, {k: v['size'] for k, v in info.items() if isinstance(v, dict)})
 # The desktop apps. bit = the firmware's bit number (core.cpp ALL_ICONS); full = only in the full build;
 # kb = about how much flash the app adds (measured: full build with and without it).
 out['apps'] = [

@@ -1,8 +1,35 @@
 <p align="center"><img src="docs/logo.svg" width="140" alt="TidyOS Pro logo"></p>
 
-# Tidy Pro Plus for the Heltec V4
+# Tidy Pro Plus for the Heltec V3 and V4
 
-**Install: https://hardwaremack-prog.github.io/Tidy-Pro-Plus/** (Chrome or Edge, USB data cable)
+**Install: https://charlesphillips3.github.io/Tidy-Pro-Plus-V3V4/** (Chrome or Edge, USB data cable)
+
+This is [Tidy Pro Plus](https://github.com/hardwaremack-prog/Tidy-Pro-Plus) with the **Heltec WiFi LoRa 32 V3** added
+next to the V4 and V4-R8. Pick the board at the top of the flasher.
+
+| Board | Flash / PSRAM | What goes on it | Room for files |
+|---|---|---|---|
+| **Heltec V3** | 8 MB / none | TidyOS Pro only (no Shelf: it doesn't fit next to it in 8 MB) | about **4.4 MB** |
+| Heltec V4 | 16 MB / 2 MB | TidyOS Pro + The Shelf (dual boot), or either one | 7.4 MB (12.4 MB TidyOS Pro only) |
+| Heltec V4-R8 | 16 MB / 8 MB | the same as the V4 | the same |
+
+### What's different on the V3
+
+* **Built with `-DTIDYOS_V3`**, 8 MB flash, PSRAM off, and its own partition table (`source/TidyOSPro/partitions-v3.csv`):
+  boot menu, the 3 MB TidyOS Pro slot, and the rest (4.4 MB) as the board's file storage. A 3 MB update fits there
+  when there's no microSD card.
+* **No front-end module** (the V4's GC1109 / KCT8103L LNA) and **no GNSS header**: TidyOS Pro leaves GPIO 2, 5, 7, 46
+  and 34/38-42 alone, the radio is read straight from the SX1262, and the GPS app has nothing to find. The RF tools'
+  front-end correction starts at 0 dB, which is right for the V3.
+* **No PSRAM**: the desktop starts in 4 colours (as on a plain ESP32) and drops to black and white while an update downloads.
+* **microSD**: The Shelf's V3 in-line wiring is tried first (CS 42, MOSI 41, CLK 40, MISO 39), then CS 4, MISO 6, CLK 47, MOSI 48.
+* **Battery**: V3.0/3.1 switch the battery divider on with ADC_CTRL (GPIO 37) low, V3.2 with it high; TidyOS reads both ways
+  and keeps the higher reading, the same as The Shelf.
+* On the 900 MHz Coms mesh it says it's a V3 (board type 3), like The Shelf for V3 does.
+* Clone copies onto another board of the same kind (8 MB for a V3).
+* Settings &rarr; **Check for updates** reads `manifest-pro-v3.json` from this repo (V4: `manifest-pro.json`, R8: `manifest-pro-r8.json`).
+
+The rest of this page is the Tidy Pro Plus notes; they apply to the V3 too unless they talk about The Shelf or dual boot.
 
 Tidy Pro Plus is a copy of [TidyOS Pro](https://github.com/CharlesPhillips3/TidyOS-Pro) with a better web flasher:
 
@@ -425,6 +452,16 @@ radios transmit in short bursts.
 
 The V4-R8 (8 MB PSRAM) has its own builds. On the R8, TidyOS Pro leaves GPIO 33–37 and 40 alone.
 
+**Heltec V3**: the same OLED, PRG, LED (35), Vext (36), battery (1 / 37) and SX1262 pins as the V4. No GNSS header and no
+front-end module. microSD on the in-line pins (CS 42, MOSI 41, CLK 40, MISO 39) or on CS 4, MISO 6, CLK 47, MOSI 48.
+
+```
+Heltec V3, 8 MB (partitions-v3.csv)
+0x010000  menu    448 KB  TidyBoot: starts TidyOS Pro, installs updates
+0x080000  tidyos    3 MB  TidyOS Pro
+0x380000  ffat    4.4 MB  the board's file storage
+```
+
 ## Dual boot
 
 The flash is split so both systems fit (16 MB):
@@ -477,7 +514,10 @@ You need **arduino-cli** with the **esp32 core 2.0.17** (FabGL doesn't build on 
 - **ESPAsyncWebServer 3.3.23** and **ArduinoJson 7** (for The Shelf)
 - `libraries/FabGL`, included here: FabGL 1.0.9 with TidyOS's patches and the ESP32-S3 port (see its README)
 
-`build.sh` compiles TidyOS Pro, TidyBoot and the dual-boot Shelf for the V4 and V4-R8. It fetches The Shelf's web app
+`build.sh` compiles TidyOS Pro and TidyBoot for the V3, V4 and V4-R8, and the dual-boot Shelf for the V4 and V4-R8
+(`ONLY="v3"` builds one board; `SKIP_SHELF=1` reuses The Shelf from the dual-boot images already in `firmware/`).
+If downloads.arduino.cc can't be reached, the esp32 core can be cloned by hand into `~/Arduino/hardware/espressif/esp32`
+(then `tools/get.py`); `build.sh` notices and uses it. It fetches The Shelf's web app
 image from The Shelf's installer site, and `tools/package.py` writes `firmware/`, the install manifests, the updater manifests
 (`manifest-pro*.json`) and `shelf/ota/` (what a dual-boot Shelf updates from).
 

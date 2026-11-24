@@ -999,7 +999,7 @@ public:
   bool withShelf = false, autoPins = false;
   CloneApp() : AppFrame("Clone to another V4", Point(40, 12), Size(560, 436), &inst) {
     static const char * how[] = {
-      "Copies this board's firmware onto another Heltec V4 by wire. Your settings, Wi-Fi password",
+      "Copies this board's firmware onto another " TIDYOS_BOARD " by wire. Your settings, Wi-Fi password",
       "and files are NOT copied: the other board starts fresh, at the boot menu.",
       "",
       "  This board  GPIO 43 (TX)  ->  RX  (GPIO 44)  other V4",

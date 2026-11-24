@@ -7,6 +7,15 @@
 #define TIDYOS_NAME "TidyOS Pro"
 #if CONFIG_IDF_TARGET_ESP32S3
   #define TIDYOS_V4 1          // Heltec V4 / V4-R8 (and V3: same radio, no FEM, no GNSS header)
+  // Heltec V3 (ESP32-S3FN8: 8 MB flash, no PSRAM): built with -DTIDYOS_V3. Same pins as the V4 for the
+  // OLED, radio, PRG, LED, Vext and battery; no front-end module and no GNSS header. TidyOS Pro only (no Shelf).
+  #if defined(TIDYOS_V3)
+    #define TIDYOS_BOARD "Heltec V3"
+  #elif CONFIG_SPIRAM_MODE_OCT
+    #define TIDYOS_BOARD "Heltec V4-R8"
+  #else
+    #define TIDYOS_BOARD "Heltec V4"
+  #endif
   #ifndef TIDYOS_HTML5
     #define TIDYOS_HTML5       // no VGA on the S3: the desktop is always in the browser
   #endif
@@ -70,7 +79,11 @@
 #define LORA_RST   12
 #define LORA_BUSY  13
 #define LORA_DIO1  14
-// Front-end module (GC1109 on V4.2, KCT8103L on V4.3)
+// Front-end module (GC1109 on V4.2, KCT8103L on V4.3). The V3 has none: these pins are left alone there.
+#ifndef TIDYOS_V3
+  #define HAS_FEM 1
+  #define HAS_GNSS 1
+#endif
 #define FEM_POWER  7
 #define FEM_EN     2
 #define FEM_CPS    46

@@ -11,11 +11,13 @@
   manifest-pro[-r8].json           what TidyOS Pro's updater reads
   shelf/ota/shelf-<b>-dual.*       what The Shelf's own updater reads on a dual-boot board
 
-<b> is v4 (ESP32-S3R2) or v4-r8 (ESP32-S3R8). The settings area (0x9000-0xE000: Wi-Fi etc.) is
+<b> is v4 (ESP32-S3R2), v4-r8 (ESP32-S3R8) or v3 (ESP32-S3FN8: 8 MB flash, no PSRAM; TidyOS Pro only,
+partitions-v3.csv). The V3's install manifest is manifest-pro-v3-install.json and its updater reads
+manifest-pro-v3.json. The settings area (0x9000-0xE000: Wi-Fi etc.) is
 never written by an install, so reinstalling keeps them.
 
 usage: package.py VERSION BUILD_DIR SHELF_WWW_V4 SHELF_WWW_R8
-  BUILD_DIR holds b-s3, b-boot, b-shelf (V4) and b-s3r8, b-bootr8, b-shelfr8 (V4-R8),
+  BUILD_DIR holds b-s3, b-boot, b-shelf (V4), b-s3r8, b-bootr8, b-shelfr8 (V4-R8) and b-s3v3, b-bootv3 (V3),
   plus b-s3full / b-s3r8full (built with -DTIDY_ALL_APPS=1)
 """
 import sys, os, json, gzip, hashlib, re
@@ -35,7 +37,8 @@ def shelf_version():
     s = open(os.path.join(root, 'source', 'ShelfDual', 'ShelfV4', 'board.h')).read()
     return re.search(r'#define FW_VERSION "([^"]+)"', s).group(1)
 
-for b, sfx in (('v4', ''), ('v4-r8', 'r8')):
+NAMES = {'v4': 'V4', 'v4-r8': 'V4-R8', 'v3': 'V3'}
+for b, sfx in (('v4', ''), ('v4-r8', 'r8'), ('v3', 'v3')):
     s3, boot, shelf = (os.path.join(bd, 'b-s3' + sfx), os.path.join(bd, 'b-boot' + sfx), os.path.join(bd, 'b-shelf' + sfx))
     if not os.path.exists(os.path.join(s3, 'TidyOSPro.ino.bin')):
         print('skipping', b, '(not built)'); continue
@@ -55,19 +58,27 @@ for b, sfx in (('v4', ''), ('v4-r8', 'r8')):
     place(main, MENU, menu, 0xE000); place(main, TIDY, app, 0xE000)
     open(os.path.join(fw, f'pro-{b}-main.bin'), 'wb').write(main)
     parts = lambda m: [{'path': f'firmware/pro-{b}-boot.bin', 'offset': 0}, {'path': f'firmware/{m}', 'offset': 0xE000}]
-    name = 'TidyOS Pro for Heltec ' + ('V4' if b == 'v4' else 'V4-R8')
+    name = 'TidyOS Pro for Heltec ' + NAMES[b]
     json.dump({'name': name, 'version': ver, 'new_install_prompt_erase': True,
                'builds': [{'chipFamily': 'ESP32-S3', 'parts': parts(f'pro-{b}-main.bin')}]},
-              open(os.path.join(root, f'manifest-pro-{b}.json'), 'w'), indent=2)
+              open(os.path.join(root, f'manifest-pro-{b}' + ('-install' if b == 'v3' else '') + '.json'), 'w'), indent=2)
     # TidyOS Pro's own updater
     json.dump({'name': name, 'version': ver,
                'tidyos': {'version': ver, 'app': f'firmware/tidyos-pro-{b}' + ('-full' if os.path.exists(fp) else '') + '.bin', 'size': len(app), 'sha256': hashlib.sha256(app).hexdigest()}},
-              open(os.path.join(root, 'manifest-pro.json' if b == 'v4' else 'manifest-pro-r8.json'), 'w'), indent=2)
+              open(os.path.join(root, {'v4': 'manifest-pro.json', 'v4-r8': 'manifest-pro-r8.json', 'v3': 'manifest-pro-v3.json'}[b]), 'w'), indent=2)
+    if b == 'v3':                                   # no Shelf on the V3
+        print(f'{b}: menu {len(menu)//1024} KB, TidyOS Pro {len(app)//1024} KB of {(SHELF-TIDY)//1024} KB'); continue
     # dual boot: + The Shelf and its web app
     sp = os.path.join(shelf, 'ShelfV4.ino.bin')
     wp = www_v4 if b == 'v4' else www_r8
-    if os.path.exists(sp) and os.path.exists(wp):
-        sapp = rd(sp); www = gzip.open(wp).read() if wp.endswith('.gz') else rd(wp)
+    old = os.path.join(fw, f'pro-{b}-dual-main.bin')
+    reuse = not os.path.exists(sp) and os.path.exists(old)   # The Shelf not rebuilt: take it from the image already here
+    if reuse:
+        o = rd(old)
+        sapp = o[SHELF - 0xE000:WWW - 0xE000].rstrip(b'\xff'); sapp += b'\xff' * (-len(sapp) % 16)
+        www = o[WWW - 0xE000:END_DUAL - 0xE000]
+    if reuse or (os.path.exists(sp) and os.path.exists(wp)):
+        if not reuse: sapp = rd(sp); www = gzip.open(wp).read() if wp.endswith('.gz') else rd(wp)
         assert len(sapp) <= WWW - SHELF and len(www) <= END_DUAL - WWW
         dual = bytearray(b'\xff' * (END_DUAL - 0xE000))
         place(dual, MENU, menu, 0xE000); place(dual, TIDY, app, 0xE000); place(dual, SHELF, sapp, 0xE000); place(dual, WWW, www, 0xE000)
@@ -76,8 +87,9 @@ for b, sfx in (('v4', ''), ('v4-r8', 'r8')):
                    'builds': [{'chipFamily': 'ESP32-S3', 'parts': parts(f'pro-{b}-dual-main.bin')}]},
                   open(os.path.join(root, f'manifest-pro-{b}-dual.json'), 'w'), indent=2)
         sid = f'shelf-{b}-dual'
-        open(os.path.join(ota, sid + '-app.bin.gz'), 'wb').write(gzip.compress(sapp, 9, mtime=0))
-        open(os.path.join(ota, sid + '-www.bin.gz'), 'wb').write(gzip.compress(www, 9, mtime=0))
-        json.dump({'version': shelf_version(), 'app': sid + '-app.bin.gz', 'appSize': len(sapp), 'www': sid + '-www.bin.gz', 'wwwSize': len(www)},
+        if reuse: print(f'{b}: The Shelf reused from the existing dual-boot image')
+        if not reuse: open(os.path.join(ota, sid + '-app.bin.gz'), 'wb').write(gzip.compress(sapp, 9, mtime=0))
+        if not reuse: open(os.path.join(ota, sid + '-www.bin.gz'), 'wb').write(gzip.compress(www, 9, mtime=0))
+        if not reuse: json.dump({'version': shelf_version(), 'app': sid + '-app.bin.gz', 'appSize': len(sapp), 'www': sid + '-www.bin.gz', 'wwwSize': len(www)},
                   open(os.path.join(ota, sid + '.json'), 'w'))
     print(f'{b}: menu {len(menu)//1024} KB, TidyOS Pro {len(app)//1024} KB of {(SHELF-TIDY)//1024} KB')
