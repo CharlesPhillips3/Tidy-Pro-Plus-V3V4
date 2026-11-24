@@ -855,13 +855,21 @@ $('pkGo').onclick = async () => {
     c = await connect(port);
     if (r.v3 && c.bytes >= 16 * 1048576) throw Object.assign(new Error(`This board has ${sz(c.bytes)} of flash: that's a Heltec V4, not a V3. Pick Heltec V4 (or V4-R8) above. Nothing was written.`), { plain: true });
     if (c.bytes < FLASH) throw new Error(`This board has ${sz(c.bytes)} of flash, but this build needs ${sz(FLASH)}` + (r.v3 ? '' : ': a Heltec V3 has 8 MB, so pick Heltec V3 above'));
+    // Bootloader unticked: only safe when the board already has this layout. Otherwise the board's old partition table
+    // doesn't point at the slots being written and the boot loader keeps restarting. Checked before anything is written.
+    const ffatNow = await boardFfatAt(c);
+    if (!on('boot') && !r.big) {
+      const want = r.v3 ? L3.ffat.at : L4.ffat.at;
+      if (ffatNow !== want) throw Object.assign(new Error(`This board doesn't have the Tidy Pro Plus ${r.v3 ? 'Heltec V3 ' : ''}layout yet` +
+        (ffatNow === null ? ' (no partition table found)' : '') + ', so it needs a new partition table. Tick Bootloader + partition table and install again. Nothing was written.'), { plain: true });
+    }
     if (r.v3) {                                   // first install on this V3 (another layout before): start its file storage blank
-      if ((await boardFfatAt(c)) !== L3.ffat.at && on('boot') && !r.writes.some(w => w.at === L3.ffat.at)) {
+      if (ffatNow !== L3.ffat.at && on('boot') && !r.writes.some(w => w.at === L3.ffat.at)) {
         r.writes.push({ what: "Clear the start of the file storage (new layout)", at: L3.ffat.at, fill: 0x10000 }); r.writes.sort((a, b) => a.at - b.at);
       }
     } else {
     // Which layout is the board on now? (where its partition table puts the file storage)
-    const nowBig = (await boardFfatAt(c)) === L.big.at;
+    const nowBig = ffatNow === L.big.at;
     if (r.big && nowBig && !on('wfat')) r.writes = r.writes.filter(w => !w.bigWipe);     // already set up: keep its files
     if (!r.big && nowBig) {
       if (!on('boot')) throw Object.assign(new Error("This board has the TidyOS-Pro-only layout (big file storage). Tick Bootloader + partition table to put The Shelf back. Nothing was written."), { plain: true });
