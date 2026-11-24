@@ -67,6 +67,7 @@ void settingsLoad()
   gSet.ledOn     = s_prefs.getBool("led", false);
   gSet.shelfOn   = s_prefs.getBool("shelf", false);
   gSet.gpsOn     = s_prefs.getBool("gps", true);
+  gSet.oledSleep = s_prefs.getBool("oledslp", true);
   gSet.tidyBands = s_prefs.getBool("tbands", false);
   gSet.tidyFreeze = s_prefs.getBool("tfreeze", false);
   gSet.hotspot = s_prefs.getBool("hotspot", false);
@@ -102,6 +103,7 @@ void settingsSave()
   s_prefs.putBool("led", gSet.ledOn);
   s_prefs.putBool("shelf", gSet.shelfOn);
   s_prefs.putBool("gps", gSet.gpsOn);
+  s_prefs.putBool("oledslp", gSet.oledSleep);
   s_prefs.putBool("tbands", gSet.tidyBands);
   s_prefs.putBool("tfreeze", gSet.tidyFreeze);
   s_prefs.putBool("hotspot", gSet.hotspot);

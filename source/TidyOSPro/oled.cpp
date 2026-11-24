@@ -22,8 +22,9 @@
 #include "oled_data.h"
 using fabgl::imin; using fabgl::imax;
 
+bool musicQuickPlaying();      // media_apps.h
 static U8G2_SSD1306_128X64_NONAME_F_HW_I2C s_oled(U8G2_R0, OLED_RST, OLED_SCL, OLED_SDA);
-static const uint32_t PAGE_MS = 30000, DIM_MS = 30UL * 60 * 1000, TAP_GAP_MS = 400, LONG_MS = 1000, RESET_MS = 3000;
+static const uint32_t PAGE_MS = 30000, DIM_MS = 30UL * 60 * 1000, SLEEP_MS = 5UL * 60 * 1000, TAP_GAP_MS = 400, LONG_MS = 1000, RESET_MS = 3000;
 static const uint8_t BRIGHT = 160, DIM = 8;
 
 enum Page { P_ADDRESS, P_CLOCK, P_WEATHER, P_WIND, P_SUN, P_STORMS, P_NEWS, P_RADIO, P_SYSTEM, P_STOPWATCH, P_COUNT };
@@ -419,7 +420,7 @@ static void oledTask(void *)
     if (prg && !prgWas) {                                    // pressed
       downAt = now; longDone = resetDone = false;
       lastPress = now;
-      if (dimmed) { s_oled.setContrast(BRIGHT); dimmed = false; swallow = true; }
+      if (dimmed) { s_oled.setPowerSave(0); s_oled.setContrast(BRIGHT); dimmed = false; swallow = true; }   // (a press only wakes it)
     }
     if (prg && !swallow && page == P_STOPWATCH) {           // held on the stopwatch page
       if (!longDone && now - downAt >= LONG_MS) {
@@ -484,7 +485,13 @@ static void oledTask(void *)
       taps = 0; held = !held; pageAt = now; redraw = true;
     }
     if (!held && now - pageAt >= PAGE_MS) { page = (page + 1) % P_COUNT; pageAt = now; redraw = true; }
-    if (!dimmed && now - lastPress > DIM_MS) { s_oled.setContrast(DIM); dimmed = true; }
+    if (musicQuickPlaying()) lastPress = now;                // music playing: stay awake (as The Shelf does)
+    // 5 minutes without a press: off (Switches > OLED sleep), or with that off, dimmed after 30 minutes
+    if (!dimmed && now - lastPress > (gSet.oledSleep ? SLEEP_MS : DIM_MS)) {
+      if (gSet.oledSleep) s_oled.setPowerSave(1); else s_oled.setContrast(DIM);
+      dimmed = true;
+    }
+    if (dimmed) { vTaskDelay(pdMS_TO_TICKS(20)); continue; }   // (nothing to draw while it's off)
     uint32_t every = page == P_STOPWATCH && s_swRun ? 100 : page == P_RADIO ? 300 : 250;
     if (redraw || now - lastDraw >= every) { draw(page, held, pageAt, now < resetShowUntil); lastDraw = now; }
     vTaskDelay(pdMS_TO_TICKS(20));
