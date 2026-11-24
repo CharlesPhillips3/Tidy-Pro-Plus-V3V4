@@ -28,6 +28,10 @@ The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (mad
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
 Version 3.4.29. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
 
+### The Shelf 1.19.7 (dual boot): less memory for the Music list, faster Opus tags
+
+* Looking up which songs have album art no longer lists the whole art folder at once, and Opus tags and covers are read in 512-byte pieces instead of a byte at a time (seconds per cover before). The same fix went into the standalone Shelf for Heltec / ESP32 as 1.19.2.
+
 ### 3.4.29: OLED sleep
 
 * The board's screen goes off after 5 minutes without a PRG press, like The Shelf's (not while music plays). A press wakes it (that press only wakes it). Switches > OLED sleep turns this off: the screen then stays on and dims after 30 minutes, as before.
