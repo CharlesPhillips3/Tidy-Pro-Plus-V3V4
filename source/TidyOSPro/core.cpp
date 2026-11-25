@@ -1292,12 +1292,12 @@ static void startDisplay()
   // (when it fills, the app just waits a moment for drawing to catch up).
   BitmappedDisplayController::queueSize = 256;
   int want = gSet.colors;   // 0 = auto
+#ifdef TIDYOS_V3
+  if (want == 0) want = 2;  // V3 (no PSRAM): black & white unless asked - the 4-colour screen leaves too little for the hotspot's web page
+#endif
 #ifdef TIDYOS_HTML5
 #ifdef TIDYOS_V4
   if (want == 0) want = heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > 200000 ? 8 : 4;   // V4: PSRAM holds the screen, so 8 colours cost nothing
-#endif
-#ifdef TIDYOS_V3
-  if (want == 0) want = 2;  // V3 (no PSRAM): black & white unless asked - the 4-colour screen leaves too little for the hotspot's web page
 #endif
   if (want == 0) want = 4;  // HTML5: 4 colours unless asked for 8 - leaves ~38 KB more for Wi-Fi and apps
 #endif

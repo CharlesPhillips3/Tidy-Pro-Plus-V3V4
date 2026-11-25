@@ -77,7 +77,11 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.32. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.33. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.33: V3 starts in black & white
+
+* The V3's black & white default really applies now (3.4.32 still picked 4 colours: the V4's colour rule came first).
 
 ### 3.4.32: Heltec V3, merged
 

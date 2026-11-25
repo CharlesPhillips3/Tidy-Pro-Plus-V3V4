@@ -107,14 +107,14 @@
       "tidyos": {
         "path": "firmware/tidyos-pro-v3.bin",
         "offset": 524288,
-        "size": 2813232,
+        "size": 2813200,
         "slot": 3145728,
         "appList": 1418060
       },
       "tidyosFull": {
         "path": "firmware/tidyos-pro-v3-full.bin",
         "offset": 524288,
-        "size": 3098080,
+        "size": 3098032,
         "slot": 3145728,
         "appList": 1594236
       }
@@ -346,7 +346,7 @@
       "kb": 1
     }
   ],
-  "version": "3.4.32",
+  "version": "3.4.33",
   "shelfVersion": "1.20.0",
   "built": "2026-11-25"
 }
