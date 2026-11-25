@@ -1035,16 +1035,25 @@ async function fmSend(t) {
   const w = cn.port.writable.getWriter();
   try { await w.write(new TextEncoder().encode('\n~' + t + '\n')); } finally { w.releaseLock(); }
 }
-// one command: resolves with its "ok ..." line, or (multi) all lines up to "end"
+// one command: resolves with its "ok ..." line, or (multi) all lines up to "end".
+// The board's answers carry no tag, and a slow board can still be answering an earlier question (one that timed out
+// and was asked again) when the next is sent. So each command only takes the lines that belong to it: "root ..."
+// for roots, "e ..." for ls, "ok ..." for the rest. An "end" that follows only other kinds of lines is a late
+// answer to something else, and is skipped.
 function fmAsk(cmd, multi, ms = 8000) {
+  const want = cmd.startsWith('roots') ? 'root ' : cmd.startsWith('ls ') ? 'e ' : null;
   return new Promise((res, rej) => {
-    const got = []; let to;
+    const got = []; let to, stale = 0;
     const arm = () => { clearTimeout(to); to = setTimeout(() => { fm.wait = null; rej(new Error("The board didn't answer. Is TidyOS Pro 3.4.5 or newer running on it?")); }, ms); };
     arm();
     fm.wait = t => {
       if (t.startsWith('err ')) { clearTimeout(to); fm.wait = null; rej(new Error(t.slice(4))); return; }
-      if (!multi) { clearTimeout(to); fm.wait = null; res(t); return; }
-      if (t === 'end' || t.startsWith('end ')) { clearTimeout(to); fm.wait = null; res({ lines: got, end: t }); return; }
+      if (!multi) { if (!t.startsWith('ok')) return; clearTimeout(to); fm.wait = null; res(t); return; }
+      if (t === 'end' || t.startsWith('end ')) {
+        if (stale && !got.length) { stale = 0; return; }           // the end of a late answer to another question
+        clearTimeout(to); fm.wait = null; res({ lines: got, end: t }); return;
+      }
+      if (want && !t.startsWith(want)) { stale++; return; }        // not ours
       got.push(t); arm();
     };
     fmSend(cmd).catch(e => { clearTimeout(to); fm.wait = null; rej(e); });
@@ -1066,7 +1075,7 @@ async function fmOpen(dir) {
   const r = await fmAsk('ls ' + dir, true);
   fm.cwd = dir;
   $('fmPath').textContent = dir.replace(fm.root, $('fmRoot').selectedOptions[0].textContent) || '/';
-  const rows = r.lines.map(l => { const [k, sz, name] = l.slice(2).split('\t'); return { dir: k === 'd', size: +sz, name }; })
+  const rows = r.lines.filter(l => /^e [df]\t\d+\t/.test(l)).map(l => { const [k, sz, name] = l.slice(2).split('\t'); return { dir: k === 'd', size: +sz, name }; })
     .sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name));
   const t = $('fmList'); t.innerHTML = '<tr><th><input type="checkbox" id="fmAll" title="Tick everything here"></th><th>Name</th><th>Size</th><th></th></tr>';
   fm.rows = rows;
@@ -1121,10 +1130,10 @@ function fmRead(path, prog) {
     arm();
     fm.wait = t => {
       if (t.startsWith('err ')) { clearTimeout(to); fm.wait = null; rej(new Error(t.slice(4))); return; }
-      if (t.startsWith('end')) {
+      if (/^end \d+$/.test(t)) {
         clearTimeout(to); fm.wait = null;
         const out = new Uint8Array(got); let o = 0; for (const c of chunks) { out.set(c, o); o += c.length; }
-        const want = +t.slice(4); if (want && want !== got) { rej(new Error(`Only ${got} of ${want} bytes arrived - try again.`)); return; }
+        const want = +t.slice(4); if (want !== got) { rej(new Error(`Only ${got} of ${want} bytes arrived - try again.`)); return; }
         res(out); return;
       }
       if (t.startsWith('d ')) { const b = atob(t.slice(2)), u = new Uint8Array(b.length); for (let k = 0; k < b.length; k++) u[k] = b.charCodeAt(k); chunks.push(u); got += u.length; if (prog) prog(got); }
@@ -1185,6 +1194,7 @@ function fmZip(files) {
 async function fmWalk(dir, rel, list) {
   const r = await fmAsk('ls ' + dir, true);
   for (const l of r.lines) {
+    if (!/^e [df]\t\d+\t/.test(l)) continue;
     const [k, sz, name] = l.slice(2).split('\t');
     if (k === 'd') await fmWalk(dir + '/' + name, rel + name + '/', list);
     else list.push({ path: dir + '/' + name, name: rel + name, size: +sz });
