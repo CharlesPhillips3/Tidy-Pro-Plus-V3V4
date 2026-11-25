@@ -567,7 +567,9 @@ function pos(e){var r=c.getBoundingClientRect();mx=Math.max(0,Math.min(639,(e.cl
 function btns(e){return e.pointerType=='mouse'?(e.buttons&7):(e.type=='pointerup'||e.type=='pointercancel'?0:1);}
 // Touch: one finger is the mouse; two fingers pinch to zoom the desktop and drag it around. A finger's press waits
 // 80 ms, so the first finger of a pinch doesn't click; a tap shorter than that still clicks.
-var tp={},tn=0,gz=null,pend=null,tDown=false;
+// Zoomed in, one finger moves the screen too: a swipe pans, a tap clicks, and touch-and-hold (350 ms) then drag
+// is the mouse (dragging windows, selecting).
+var tp={},tn=0,gz=null,pend=null,tDown=false,pan=null,t0x=0,t0y=0;
 function zApply(){c.style.transformOrigin='0 0';c.style.transform=Z>1?'translate('+TX+'px,'+TY+'px) scale('+Z+')':'';document.getElementById('zr').style.display=Z>1?'block':'none';}
 function zClamp(){var w=document.getElementById('wrap').getBoundingClientRect(),cw=c.offsetWidth*Z,ch=c.offsetHeight*Z,bx=gz?gz.bx:c.getBoundingClientRect().left-TX,by=gz?gz.by:c.getBoundingClientRect().top-TY;
  TX=cw<=w.width?w.left+(w.width-cw)/2-bx:Math.min(w.left-bx,Math.max(w.right-cw-bx,TX));
@@ -580,20 +582,26 @@ c.addEventListener('pointermove',function(e){
  if(e.pointerType=='touch'){if(tp[e.pointerId]){tp[e.pointerId]={x:e.clientX,y:e.clientY};}
   if(gz){var p=tPts();if(p.length<2)return;var d=Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y),mx_=(p[0].x+p[1].x)/2,my_=(p[0].y+p[1].y)/2;
    Z=Math.max(1,Math.min(6,gz.z*d/gz.d));TX=mx_-gz.bx-Z*gz.px;TY=my_-gz.by-Z*gz.py;zClamp();zApply();return;}
+  if(pan){TX=pan.tx+e.clientX-pan.x;TY=pan.ty+e.clientY-pan.y;zClamp();zApply();return;}
+  if(pend&&Z>1&&Math.hypot(e.clientX-t0x,e.clientY-t0y)>8){clearTimeout(pend);pend=null;pan={x:t0x,y:t0y,tx:TX,ty:TY};
+   TX=pan.tx+e.clientX-pan.x;TY=pan.ty+e.clientY-pan.y;zClamp();zApply();return;}   // zoomed in: a swipe moves the screen
   pos(e);if(pend)return;mb=tDown?1:0;mDirty=true;return;}
  pos(e);mb=btns(e);mDirty=true;});
 c.addEventListener('pointerdown',function(e){e.preventDefault();c.focus();try{c.setPointerCapture(e.pointerId);}catch(x){}
  if(e.pointerType=='touch'){tp[e.pointerId]={x:e.clientX,y:e.clientY};tn++;
   if(tn==2){                                         // a second finger: zoom, not a click
    if(pend){clearTimeout(pend);pend=null;}
+   pan=null;
    if(tDown){mb=0;mDirty=false;mSend();tDown=false;}
    var p=tPts(),r=c.getBoundingClientRect(),bx=r.left-TX,by=r.top-TY,mx_=(p[0].x+p[1].x)/2,my_=(p[0].y+p[1].y)/2;
    gz={d:Math.max(20,Math.hypot(p[0].x-p[1].x,p[0].y-p[1].y)),z:Z,bx:bx,by:by,px:(mx_-bx-TX)/Z,py:(my_-by-TY)/Z};return;}
   if(tn>2)return;
-  pos(e);pend=setTimeout(function(){pend=null;if(gz||tn!=1)return;mb=1;mDirty=false;mSend();tDown=true;},80);return;}
+  pan=null;t0x=e.clientX;t0y=e.clientY;
+  pos(e);pend=setTimeout(function(){pend=null;if(gz||pan||tn!=1)return;mb=1;mDirty=false;mSend();tDown=true;},Z>1?350:80);return;}
  pos(e);mb=btns(e);mDirty=false;mSend();});
 function tEnd(e,cancel){if(!tp[e.pointerId])return;delete tp[e.pointerId];tn=Math.max(0,tn-1);
  if(gz){if(tn<2){gz=null;if(Z<1.08)zReset();else fit();}return;}             // zoom done: draw it sharp at this size
+ if(pan){pan=null;return;}                                                     // a swipe that moved the screen
  if(pend){clearTimeout(pend);pend=null;if(!cancel){pos(e);mb=1;mSend();mb=0;mSend();}return;}   // a quick tap
  if(tDown){pos(e);mb=0;mDirty=false;mSend();tDown=false;}}
 c.addEventListener('pointerup',function(e){if(e.pointerType=='touch'){tEnd(e,false);return;}pos(e);mb=btns(e);mDirty=false;mSend();});

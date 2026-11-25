@@ -15,6 +15,8 @@ next to the V4 and V4-R8. Pick the board at the top of the flasher.
 
 ### 3.4.38: the desktop page on phones
 
+* **3.4.39: zoomed in, one finger moves the screen:** swipe to move around, tap to click, touch-and-hold
+  (about a third of a second) then drag to use the mouse (drag windows, select). At normal size one finger is the mouse.
 * **Pinch to zoom** the desktop with two fingers, and drag it around with two fingers. One finger is still the mouse
   (a press waits 80 ms, so the first finger of a pinch doesn't click). When you let go, the page redraws it at the new
   size with hard pixels, so text stays sharp. **Fit** (bottom right) or pinching back out goes back to the whole screen.
