@@ -71,6 +71,7 @@ void settingsLoad()
   gSet.tidyBands = s_prefs.getBool("tbands", false);
   gSet.tidyFreeze = s_prefs.getBool("tfreeze", false);
   gSet.hotspot = s_prefs.getBool("hotspot", false);
+  gSet.hotspotCell = s_prefs.getBool("hscell", false);
   gSet.alarmOn   = s_prefs.getBool("alarm", false);
   gSet.alarmMin  = s_prefs.getInt("alarmm", 420);
   gSet.worldCity = s_prefs.getInt("wcity", 0);
@@ -107,6 +108,7 @@ void settingsSave()
   s_prefs.putBool("tbands", gSet.tidyBands);
   s_prefs.putBool("tfreeze", gSet.tidyFreeze);
   s_prefs.putBool("hotspot", gSet.hotspot);
+  s_prefs.putBool("hscell", gSet.hotspotCell);
   s_prefs.putBool("alarm", gSet.alarmOn);
   s_prefs.putInt("alarmm", gSet.alarmMin);
   s_prefs.putInt("wcity", gSet.worldCity);
@@ -1294,6 +1296,9 @@ static void startDisplay()
 #ifdef TIDYOS_V4
   if (want == 0) want = heap_caps_get_free_size(MALLOC_CAP_SPIRAM) > 200000 ? 8 : 4;   // V4: PSRAM holds the screen, so 8 colours cost nothing
 #endif
+#ifdef TIDYOS_V3
+  if (want == 0) want = 2;  // V3 (no PSRAM): black & white unless asked - the 4-colour screen leaves too little for the hotspot's web page
+#endif
   if (want == 0) want = 4;  // HTML5: 4 colours unless asked for 8 - leaves ~38 KB more for Wi-Fi and apps
 #endif
   BitmappedDisplayController * dc = nullptr;
@@ -1328,12 +1333,23 @@ void batteryRead()                           // every ~10 s (the OLED task)
 {
 #ifdef TIDYOS_V4
   uint32_t mv = 0;
+#if defined(TIDYOS_V3)
+  // V3.0/3.1 connect the divider with ADC_CTRL LOW, V3.2 with HIGH (as The Shelf does it): read both, keep the higher
+  for (int lvl = 0; lvl < 2; lvl++) {
+    pinMode(PIN_ADC_CTRL, OUTPUT); digitalWrite(PIN_ADC_CTRL, lvl ? HIGH : LOW); delay(5);
+    uint32_t s = 0;
+    for (int i = 0; i < 8; i++) s += analogReadMilliVolts(PIN_VBAT);
+    if (s > mv) mv = s;
+  }
+  pinMode(PIN_ADC_CTRL, INPUT);
+#else
 #if !CONFIG_SPIRAM_MODE_OCT
   pinMode(PIN_ADC_CTRL, OUTPUT); digitalWrite(PIN_ADC_CTRL, HIGH); delay(5);
 #endif
   for (int i = 0; i < 8; i++) mv += analogReadMilliVolts(PIN_VBAT);
 #if !CONFIG_SPIRAM_MODE_OCT
   digitalWrite(PIN_ADC_CTRL, LOW);
+#endif
 #endif
   float v = (mv / 8.0f) * 4.9f * 1.045f / 1000.0f;
   s_battV = (s_battV < 0 || fabsf(v - s_battV) > 0.5f) ? v : s_battV * 0.7f + v * 0.3f;
@@ -1379,7 +1395,12 @@ bool gnssAlreadyFound();   // rf_engine.cpp: a GPS is already running on 39-42
 
 static bool mountAnySD()
 {
-#ifdef TIDYOS_V4
+#if defined(TIDYOS_V3)
+  // V3: no GNSS header, so The Shelf's V3 in-line layout comes first, then the six-wire 4/6/47/48 layout
+  if (mountSD(SD_INLINE_MISO, SD_INLINE_MOSI, SD_INLINE_CLK, SD_INLINE_CS, "Shelf in-line (CS 42, MOSI 41, CLK 40, MISO 39)")) return true;
+  if (mountSD(SD_MISO, SD_MOSI, SD_CLK, SD_CS, "V3 six-wire (CS 4, MISO 6, CLK 47, MOSI 48)")) return true;
+  return mountSD(42, 40, 41, 39, "in-line, module turned round (CS 39, MOSI 40, CLK 41, MISO 42)");
+#elif defined(TIDYOS_V4)
   if (mountSD(SD_MISO, SD_MOSI, SD_CLK, SD_CS, "V4 (CS 4, MISO 6, CLK 47, MOSI 48)")) return true;
   if (gnssAlreadyFound()) return false;     // 39-42 belong to a GPS that is already running
   // (the card is tried before looking for a GPS, like The Shelf does: probing for a GPS pokes 40 and 42)
@@ -1534,7 +1555,7 @@ static void splashLogo()
   cv.setPenColor(T.deskText);
   cv.setBrushColor(T.desk);
   cv.drawText(&FONT_std_14, bx + 68, by2 + 5, "900 MHz field computer");
-  cv.drawText(&FONT_std_12, bx + 68, by2 + 24, "AMI / RF survey tools on the Heltec V4");
+  cv.drawText(&FONT_std_12, bx + 68, by2 + 24, "AMI / RF survey tools on the " TIDYOS_BOARD);
   // progress bar frame
   cv.setPenColor(T.win);
   cv.drawRectangle(BAR_X - 2, BAR_Y - 2, BAR_X + BAR_W + 1, BAR_Y + BAR_H + 1);
@@ -2022,7 +2043,7 @@ void setup()
   delay(200);
   crashBegin();     // did the last run crash? (Task Manager shows it)
   ledBegin();       // white LED: slow blink while starting
-  Serial.println("\n[TidyOS Pro] " TIDYOS_VERSION " (Heltec V4) starting");
+  Serial.println("\n[TidyOS Pro] " TIDYOS_VERSION " (" TIDYOS_BOARD ") starting");
 #ifdef TIDYOS_V4
   // dual boot: the next restart goes back to the boot menu (TidyBoot), which starts the last
   // choice after its 5 s countdown. Without a boot menu this does nothing.
@@ -2097,7 +2118,11 @@ void setup()
   crashSave(dataPath("crash.txt"));
 #ifdef TIDYOS_V4
   splash("Starting the 900 MHz radio and GPS", 45);
+#ifdef TIDYOS_V3
+  if (gSet.meshOn && gSet.mesh900) rf::begin();     // V3 (no PSRAM): otherwise the radio starts when an app needs it (~25 KB)
+#else
   rf::begin();
+#endif
   rf::gnssStart();
   oledBegin();          // the board's own screen: where to find the desktop
   memLog("radio + GNSS");

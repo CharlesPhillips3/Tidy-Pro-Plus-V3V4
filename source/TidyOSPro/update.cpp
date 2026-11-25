@@ -120,7 +120,9 @@ static bool verifyPeer(WiFiClientSecure & c, const std::string & host)
 
 #define UPD_HOST "hardwaremack-prog.github.io"
 #define UPD_BASE "/Tidy-Pro-Plus/"
-#if defined(TIDYOS_V4) && CONFIG_SPIRAM_MODE_OCT
+#if defined(TIDYOS_V3)
+  #define UPD_MANIFEST "manifest-pro-v3.json"
+#elif defined(TIDYOS_V4) && CONFIG_SPIRAM_MODE_OCT
   #define UPD_MANIFEST "manifest-pro-r8.json"
 #elif defined(TIDYOS_V4)
   #define UPD_MANIFEST "manifest-pro.json"

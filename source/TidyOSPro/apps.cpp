@@ -2034,9 +2034,15 @@ public:
     hotBtn = button(gSet.hotspot ? "Hotspot: ON" : "Run TidyOS Hotspot", cx + 416, y + 19, 170);
     hotBtn->onClick = [this]() {
       if (!gSet.hotspot) {
-        char m[160];
-        snprintf(m, sizeof(m), "TidyOS leaves your Wi-Fi and runs its own. Join \"%s\" (password %s), open 10.1.1.250. No internet meanwhile.", SCREEN_AP_NAME, SCREEN_AP_PASS);
-        if (gApp->messageBox("TidyOS Hotspot", m, "Start", "Cancel", nullptr, uiMessageBoxIcon::Info) != uiMessageBoxResult::Button1) return;
+        char m[300];
+        snprintf(m, sizeof(m), "TidyOS leaves your Wi-Fi and runs its own. Join \"%s\" (password %s), open 10.1.1.250.\n"
+                 "Reach TidyOS: PCs and phones always open it, but have no internet while joined.\n"
+                 "Keep phone internet: weather and news work, but some phones need mobile data off to open it.",
+                 SCREEN_AP_NAME, SCREEN_AP_PASS);
+        auto r = gApp->messageBox("TidyOS Hotspot", m, "Reach TidyOS", "Keep phone internet", "Cancel", uiMessageBoxIcon::Info);
+        if (r != uiMessageBoxResult::Button1 && r != uiMessageBoxResult::Button2) return;
+        gSet.hotspotCell = r == uiMessageBoxResult::Button2;    // also used when the hotspot starts by itself (home Wi-Fi out of range)
+        screenHotspotMode();
       }
       screenHotspot(!gSet.hotspot);
       settingsSave();

@@ -1,0 +1,11 @@
+# TidyOS Pro (Heltec V3, 8 MB, no PSRAM): TidyOS Pro only, no The Shelf.
+# Same names as the V4 tables, so the same boot menu and updater work. The boot menu (factory) installs
+# updates waiting on the SD card or in the board's storage, then starts TidyOS Pro.
+# About 4.4 MB for files (the "ffat" area), enough to hold a 3 MB update download when there's no SD card.
+# Name,   Type, SubType,  Offset,   Size
+nvs,      data, nvs,      0x9000,   0x5000
+otadata,  data, ota,      0xe000,   0x2000
+menu,     app,  factory,  0x10000,  0x70000
+tidyos,   app,  ota_0,    0x80000,  0x300000
+ffat,     data, fat,      0x380000, 0x470000
+coredump, data, coredump, 0x7F0000, 0x10000

@@ -1,10 +1,10 @@
 {
   "name": "TidyOS Pro for Heltec V4",
-  "version": "3.4.31",
+  "version": "3.4.32",
   "tidyos": {
-    "version": "3.4.31",
+    "version": "3.4.32",
     "app": "firmware/tidyos-pro-v4-full.bin",
-    "size": 3102800,
-    "sha256": "4a74581c79a5340a706db8df99a967337fc1f019ec15d0b4997231eeb880b58a"
+    "size": 3106784,
+    "sha256": "14f470dde0aeddac993a0922d138e121e9ac78ee728f0070916070c35b11d9a5"
   }
 }

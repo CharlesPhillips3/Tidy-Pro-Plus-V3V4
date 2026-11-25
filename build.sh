@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# TidyOS Pro - builds everything for the Heltec V4 and V4-R8 and packages it for the web flasher.
+# TidyOS Pro - builds everything for the Heltec V3, V4 and V4-R8 and packages it for the web flasher.
+# The V3 (8 MB flash, no PSRAM) gets TidyOS Pro only (no Shelf), with source/TidyOSPro/partitions-v3.csv.
+# ONLY=v3 (or "v4 r8") builds just those boards. SKIP_SHELF=1 reuses The Shelf from the images already in firmware/.
 #
 #   TidyOSPro   TidyOS Pro itself                    -> the "tidyos" app slot
 #   TidyBoot    the boot menu (and update installer)  -> the "menu" (factory) slot
@@ -25,21 +27,34 @@ fi
 cp source/TidyOSPro/partitions.csv source/TidyBoot/partitions.csv
 cp source/TidyOSPro/partitions.csv source/ShelfDual/ShelfV4/partitions.csv
 
-for v in v4 r8; do
-  psram=enabled; sfx=""; [ $v = r8 ] && psram=opi && sfx=r8
-  F="espressif:esp32:esp32s3:FlashSize=16M,FlashMode=qio,PSRAM=$psram,USBMode=hwcdc,CDCOnBoot=cdc,CPUFreq=240"
+for v in ${ONLY:-v4 r8 v3}; do
+  psram=enabled; sfx=""; flash=16M; xf=""; SK=source/TidyOSPro; BK=source/TidyBoot; usb="USBMode=hwcdc,CDCOnBoot=cdc"
+  [ $v = r8 ] && psram=opi && sfx=r8
+  if [ $v = v3 ]; then                       # Heltec V3: 8 MB flash, no PSRAM, its own partition table
+    # its USB-C goes through a CP2102 to UART0 (GPIO 43/44), not to the S3's own USB: Serial must be UART0,
+    # or the console, Files over USB and the flasher's board checks hear nothing
+    psram=disabled; sfx=v3; flash=8M; xf="-DTIDYOS_V3"; usb="USBMode=hwcdc,CDCOnBoot=default"
+    rm -rf "$B/src-v3"; mkdir -p "$B/src-v3"; cp -a source/TidyOSPro source/TidyBoot "$B/src-v3/"
+    cp source/TidyOSPro/partitions-v3.csv "$B/src-v3/TidyOSPro/partitions.csv"
+    cp source/TidyOSPro/partitions-v3.csv "$B/src-v3/TidyBoot/partitions.csv"
+    SK="$B/src-v3/TidyOSPro"; BK="$B/src-v3/TidyBoot"
+  fi
+  F="espressif:esp32:esp32s3:FlashSize=$flash,FlashMode=qio,PSRAM=$psram,$usb,CPUFreq=240"
   arduino-cli compile --fqbn "$F" ${TP[@]+"${TP[@]}"} --library "$PWD/libraries/FabGL" \
-    --build-property "compiler.cpp.extra_flags=-DTIDYOS_HTML5" \
+    --build-property "compiler.cpp.extra_flags=-DTIDYOS_HTML5 $xf" \
     --build-property "compiler.c.elf.extra_flags=-Wl,--wrap=ff_disk_read -Wl,--wrap=ff_disk_write -Wl,--wrap=esp_panic_handler" \
-    --build-property "upload.maximum_size=3145728" --build-path "$B/b-s3$sfx" source/TidyOSPro
+    --build-property "upload.maximum_size=3145728" --build-path "$B/b-s3$sfx" "$SK"
   # the full build: every TidyOS-ESP32 app as well (the flasher picks which ones show)
   arduino-cli compile --fqbn "$F" ${TP[@]+"${TP[@]}"} --library "$PWD/libraries/FabGL" \
-    --build-property "compiler.cpp.extra_flags=-DTIDYOS_HTML5 -DTIDY_ALL_APPS=1" \
+    --build-property "compiler.cpp.extra_flags=-DTIDYOS_HTML5 -DTIDY_ALL_APPS=1 $xf" \
     --build-property "compiler.c.elf.extra_flags=-Wl,--wrap=ff_disk_read -Wl,--wrap=ff_disk_write -Wl,--wrap=esp_panic_handler" \
-    --build-property "upload.maximum_size=3145728" --build-path "$B/b-s3${sfx}full" source/TidyOSPro
-  arduino-cli compile --fqbn "$F" ${TP[@]+"${TP[@]}"} --build-property "upload.maximum_size=458752" --build-path "$B/b-boot$sfx" source/TidyBoot
+    --build-property "upload.maximum_size=3145728" --build-path "$B/b-s3${sfx}full" "$SK"
+  arduino-cli compile --fqbn "$F" ${TP[@]+"${TP[@]}"} --build-property "upload.maximum_size=458752" --build-path "$B/b-boot$sfx" "$BK"
+  [ $v = v3 ] && continue                    # no Shelf on the V3
+  [ -n "${SKIP_SHELF:-}" ] && continue
   arduino-cli compile --fqbn "$F" ${TP[@]+"${TP[@]}"} \
     --build-property "compiler.cpp.extra_flags=-DCONFIG_ASYNC_TCP_RUNNING_CORE=0 -DCONFIG_ASYNC_TCP_STACK_SIZE=16384 -DCONFIG_ASYNC_TCP_QUEUE_SIZE=256 -DSHELF_DUALBOOT" \
+    --build-property "compiler.c.elf.extra_flags=-Wl,--wrap=esp_panic_handler" \
     --build-property "upload.maximum_size=2097152" --library "$PWD/source/ShelfDual/libraries/SD" --library "$PWD/source/ShelfDual/libraries/AsyncTCP" \
     --build-path "$B/b-shelf$sfx" source/ShelfDual/ShelfV4
 done

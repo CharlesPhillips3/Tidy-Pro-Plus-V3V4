@@ -110,6 +110,7 @@ bool gnssStart();               // looks for the module (once); true if NMEA is 
 bool gnssFixed();
 
 bool  gnssRunning();            // a GPS module was found and is being read
+bool  wake();                  // start the radio if it isn't yet (the V3 starts it only when needed); radioOk()
 }  // namespace rf
 
 bool gnssPresent();             // for core.cpp: GPIO 39-42 are taken by the GNSS module

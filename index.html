@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Tidy Pro Plus for Heltec V4</title>
+<title>Tidy Pro Plus for Heltec V3 and V4</title>
 <meta name="description" content="Install Tidy Pro Plus (TidyOS Pro with a pick-what-you-install flasher), a 900 MHz field computer for AMI and RF site work, on a Heltec WiFi LoRa 32 V4 from your browser. Dual boot with The Shelf.">
 <link rel="icon" href="docs/favicon-32.png">
 <script type="module" src="https://unpkg.com/esp-web-tools@10.1.1/dist/web/install-button.js?module"></script>
@@ -130,7 +130,7 @@ details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var
     <div>
       <h1>Tidy<span class="pro">PRO+</span></h1>
       <p class="ver-pill" id="verPill" hidden></p>
-      <p class="lead"><b>Tidy Pro Plus</b> is TidyOS Pro with a flasher where you tick exactly what goes on the board and see the free space as you go. A pocket field computer on a Heltec V4: a 902–928 MHz spectrum sweep, AMI meter traffic counter, GPS site survey and an RF exposure estimate, plus the TidyOS desktop in any browser. It can share the board with The Shelf (dual boot).</p>
+      <p class="lead"><b>Tidy Pro Plus</b> is TidyOS Pro with a flasher where you tick exactly what goes on the board and see the free space as you go. A pocket field computer on a Heltec V3 or V4: a 902–928 MHz spectrum sweep, AMI meter traffic counter, GPS site survey and an RF exposure estimate, plus the TidyOS desktop in any browser. It can share the board with The Shelf (dual boot).</p>
       <p style="margin-top:18px"><a class="btn alt" href="#usbfiles">&#127925; Copy music &amp; files to the board</a></p>
     </div>
   </header>
@@ -144,13 +144,15 @@ details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var
   </div>
 
   <h2>2. Pick what to install</h2>
-  <p>Tick the pieces you want copied onto the board. The bar shows where each one lands in the board's 16 MB of flash and how much room is left as you tick and untick. Then click <b>Install</b> and choose the board's port when Chrome asks. Chrome or Edge on a PC, Mac or Raspberry Pi. If no port shows up, hold <b>PRG</b> on the board while you plug it in.</p>
+  <p>Tick the pieces you want copied onto the board. The bar shows where each one lands in the board's flash (16 MB on a V4, 8 MB on a V3) and how much room is left as you tick and untick. Then click <b>Install</b> and choose the board's port when Chrome asks. Chrome or Edge on a PC, Mac or Raspberry Pi. If no port shows up, hold <b>PRG</b> on the board while you plug it in.</p>
+  <div class="warn" id="v3Note" hidden><b>Heltec V3:</b> 8 MB of flash and no PSRAM, so it gets <b>TidyOS Pro only</b> (no Shelf) with about <b>4.4 MB</b> for your files. No GPS header and no front-end amplifier on the V3: the 900 MHz tools read the SX1262 directly. The microSD card goes on the in-line pins (CS 42, MOSI 41, CLK 40, MISO 39) or CS 4, MISO 6, CLK 47, MOSI 48.</div>
   <div class="warn">With both systems on the board, it shows a <b>5-second boot menu</b> after every restart: a short press of PRG switches between them, holding PRG starts the one shown now, and if you do nothing it starts the one you used last (it is already picked). With only one, it starts that one straight away.</div>
   <div class="card pick">
     <div class="pk-top">
       <div class="seg" role="radiogroup" aria-label="Board">
         <label><input type="radio" name="board" value="v4" checked> Heltec V4</label>
         <label><input type="radio" name="board" value="v4-r8"> V4-R8 (8 MB PSRAM)</label>
+        <label><input type="radio" name="board" value="v3"> Heltec V3</label>
       </div>
       <div class="presets">Quick picks:
         <button class="chip" data-preset="dual">Dual boot</button>
@@ -214,6 +216,7 @@ details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var
     <div class="grid" style="margin-top:12px">
       <div class="card"><h3>Heltec V4 &middot; dual boot</h3><esp-web-install-button manifest="manifest-pro-v4-dual.json"><button slot="activate">Install dual boot</button></esp-web-install-button><small>About 7.5 MB.</small></div>
       <div class="card"><h3>Heltec V4 &middot; TidyOS Pro only</h3><esp-web-install-button manifest="manifest-pro-v4.json"><button slot="activate">Install TidyOS Pro</button></esp-web-install-button><small>About 3.3 MB.</small></div>
+      <div class="card"><h3>Heltec V3 &middot; TidyOS Pro</h3><esp-web-install-button manifest="manifest-pro-v3-install.json"><button slot="activate">Install on a V3</button></esp-web-install-button><p class="muted" style="margin-top:10px">8 MB board: TidyOS Pro only, about 4.4 MB for files.</p></div>
       <div class="card"><h3>Heltec V4-R8</h3><esp-web-install-button manifest="manifest-pro-v4-r8-dual.json"><button slot="activate">Install dual boot (R8)</button></esp-web-install-button>
         <p style="margin-top:10px"><esp-web-install-button manifest="manifest-pro-v4-r8.json"><button slot="activate" class="btn alt">TidyOS Pro only (R8)</button></esp-web-install-button></p></div>
     </div>
@@ -569,8 +572,8 @@ $('fbRestoreGo').onclick = async () => {
   finally { if (c) await done(c); busy(false); }
 };
 // ---------- Tidy Pro Plus: pick what to install, see the free space, write just those pieces ----------
-const FLASH = 16 * 1048576;
-const L = {   // the flash layout (source/TidyOSPro/partitions.csv)
+let FLASH = 16 * 1048576;
+const L4 = {   // the flash layout (source/TidyOSPro/partitions.csv)
   sys:    { at: 0x0,      size: 0x10000 },   // bootloader, partition table, Wi-Fi/settings, boot selection
   menu:   { at: 0x10000,  size: 0x70000 },
   tidyos: { at: 0x80000,  size: 0x300000 },
@@ -581,6 +584,16 @@ const L = {   // the flash layout (source/TidyOSPro/partitions.csv)
   core:   { at: 0xFF0000, size: 0x10000 },
   big:    { at: 0x380000, size: 0xC70000 },  // TidyOS Pro only (partitions-tidyonly.csv): one big file area
 };
+const L3 = {   // Heltec V3, 8 MB (source/TidyOSPro/partitions-v3.csv): TidyOS Pro only
+  sys:    { at: 0x0,      size: 0x10000 },
+  menu:   { at: 0x10000,  size: 0x70000 },
+  tidyos: { at: 0x80000,  size: 0x300000 },
+  ffat:   { at: 0x380000, size: 0x470000 },
+  core:   { at: 0x7F0000, size: 0x10000 },
+};
+let L = L4;
+const isV3 = () => board() === 'v3';
+function useBoard() { L = isV3() ? L3 : L4; FLASH = (isV3() ? 8 : 16) * 1048576; }
 const COLOR = { sys: '--c-sys', menu: '--c-menu', tidyos: '--c-tidy', shelf: '--c-shelf', www: '--c-www', core: '--c-sys' };
 const NAME = { menu: 'Boot menu', tidyos: 'TidyOS Pro', shelf: 'The Shelf', www: "The Shelf's web app", tidyfs: "TidyOS Pro's file storage", ffat: "The Shelf's file storage" };
 let PARTS = null;
@@ -610,6 +623,31 @@ function planBig() {
   const system = L.sys.size + L.core.size;
   return { P, st, writes, programs, kept, spare, empty: 0, files: L.big.size, system, free: FLASH - system - programs - kept, fill,
            fsUse: { tidyfs: false, ffat: true }, tidyThere: true, shelfThere: false, big: true };
+}
+// Heltec V3: TidyOS Pro only (its boot image carries the V3 table), the rest of the 8 MB is file storage.
+function planV3() {
+  const base = PARTS.boards.v3;
+  const P = Object.assign({}, base, { tidyos: needFull() ? base.tidyosFull : base.tidyos });
+  const st = { menu: on('menu') ? 'install' : 'kept', tidyos: on('tidyos') ? 'install' : (on('clear') ? 'empty' : 'kept') }, writes = [];
+  if (on('boot')) writes.push({ what: 'Bootloader + partition table (Heltec V3)', at: 0, file: P.boot.path, size: P.boot.size });
+  if (on('wnvs')) writes.push({ what: 'Forget Wi-Fi and settings', at: 0x9000, fill: 0x5000 });
+  if (on('menu') || on('tidyos')) writes.push({ what: 'Start at the boot menu', at: 0xE000, fill: 0x2000 });
+  for (const k of ['menu', 'tidyos']) {
+    if (st[k] === 'install') writes.push({ what: NAME[k], at: P[k].offset, file: P[k].path, size: P[k].size, apps: k === 'tidyos' ? P[k].appList : undefined });
+    else if (st[k] === 'empty') writes.push({ what: 'Empty ' + NAME[k] + ' slot', at: L.tidyos.at, fill: 0x1000 });
+  }
+  if (on('wfat')) writes.push({ what: "Wipe the board's file storage", at: L.ffat.at, fill: L.ffat.size });
+  writes.sort((a, b) => a.at - b.at);
+  let programs = 0, kept = 0, spare = 0, empty = 0;
+  const fill = {};
+  for (const k of ['menu', 'tidyos']) {
+    if (st[k] === 'install') { programs += P[k].size; spare += L[k].size - P[k].size; fill[k] = P[k].size / L[k].size; }
+    else if (st[k] === 'kept') { kept += L[k].size; fill[k] = 1; }
+    else { empty += L[k].size; fill[k] = 0; }
+  }
+  const tidyThere = st.tidyos !== 'empty', system = L.sys.size + L.core.size;
+  return { P, st, writes, programs, kept, spare, empty, files: tidyThere ? L.ffat.size : 0, system, free: FLASH - system - programs - kept, fill,
+           fsUse: { tidyfs: false, ffat: tidyThere }, tidyThere, shelfThere: false, v3: true };
 }
 // ---- the apps on TidyOS Pro's desktop
 const appBox = id => document.getElementById('a-' + id);
@@ -650,8 +688,10 @@ async function patchApps(data, at, bits) {
 }
 
 // "Give The Shelf's space to my files": only offered with TidyOS Pro ticked and The Shelf unticked
-const bigOn = () => on('big') && on('tidyos') && !on('shelf');
+const bigOn = () => !isV3() && on('big') && on('tidyos') && !on('shelf');
 function plan() {
+  useBoard();
+  if (isV3()) return planV3();
   if (bigOn()) return planBig();
   const base = PARTS.boards[board()], clear = on('clear');
   const P = Object.assign({}, base, { tidyos: needFull() ? base.tidyosFull : base.tidyos });
@@ -692,8 +732,14 @@ function plan() {
 
 function draw() {
   if (!PARTS) return;
+  useBoard();
+  const v3 = isV3();
+  $('v3Note').hidden = !v3;
+  if (v3) { $('c-shelf').checked = $('c-www').checked = $('c-big').checked = false; }
+  $('c-shelf').disabled = v3;
+  for (const b of document.querySelectorAll('[data-preset=dual],[data-preset=shelf]')) b.disabled = v3;
   const P = plan().P;
-  for (const k of ['boot', 'menu', 'tidyos', 'shelf', 'www']) $('s-' + k).textContent = sz(P[k].size);
+  for (const k of ['boot', 'menu', 'tidyos', 'shelf', 'www']) $('s-' + k).textContent = P[k] ? sz(P[k].size) : '–';
   const nApps = PARTS.apps.filter(appOn).length, full = needFull(), extra = (PARTS.boards[board()].tidyosFull.size - PARTS.boards[board()].tidyos.size);
   $('a-count').textContent = `· ${nApps} of ${PARTS.apps.length} on the desktop`;
   $('a-build').innerHTML = full
@@ -715,11 +761,11 @@ function draw() {
   }
   for (const id of ['tidyos', 'shelf', 'www', 'boot', 'menu']) $('c-' + id).closest('.row').classList.toggle('off', !on(id));
   $('n-www').textContent = on('shelf') && !on('www') ? "Unticked: the web app already on the board is kept" : "The pages The Shelf shows in your browser";
-  const canBig = on('tidyos') && !on('shelf');
+  const canBig = !v3 && on('tidyos') && !on('shelf');
   $('r-big').hidden = !canBig;
   if (canBig && on('big')) { $('c-www').checked = false; $('c-boot').checked = true; }
   $('c-boot').disabled = bigOn();
-  $('c-www').disabled = bigOn();
+  $('c-www').disabled = bigOn() || v3;
   const r = plan();
 
   // the flash map, in flash order
@@ -733,13 +779,14 @@ function draw() {
     d.appendChild(f); map.appendChild(d);
   };
   seg('sys', 'System: bootloader, partition table, settings (64 KB)', '--c-sys', 1);
-  for (const k of (r.big ? ['menu', 'tidyos'] : ['menu', 'tidyos', 'shelf', 'www'])) {
+  for (const k of (r.big || r.v3 ? ['menu', 'tidyos'] : ['menu', 'tidyos', 'shelf', 'www'])) {
     const t = r.st[k] === 'install' ? `${NAME[k]}: ${sz(r.P[k].size)} of a ${sz(L[k].size)} slot` : r.st[k] === 'kept' ? `${NAME[k]} slot: left as it is` : `${NAME[k]} slot: empty`;
     seg(k, t, COLOR[k], r.fill[k], r.st[k] === 'kept');
   }
-  if (r.big) seg('big', `File storage for TidyOS Pro: ${sz(L.big.size)}`, '--free', 0, false, true);
+  if (r.v3) seg('ffat', r.tidyThere ? `File storage for TidyOS Pro: ${sz(L.ffat.size)}` : 'Unused', '--free', 0, false, r.tidyThere);
+  else if (r.big) seg('big', `File storage for TidyOS Pro: ${sz(L.big.size)}`, '--free', 0, false, true);
   else seg('tidyfs', 'Old 1 MB file area (its files are moved to the shared storage at the first start)', '--free', 0, false, false);
-  if (!r.big) seg('ffat', r.fsUse.ffat ? `File storage (TidyOS Pro and The Shelf): ${sz(L.ffat.size)}` : 'Unused', '--free', 0, false, r.fsUse.ffat);
+  if (!r.big && !r.v3) seg('ffat', r.fsUse.ffat ? `File storage (TidyOS Pro and The Shelf): ${sz(L.ffat.size)}` : 'Unused', '--free', 0, false, r.fsUse.ffat);
   seg('core', 'Crash log (64 KB)', '--c-sys', 1);
 
   // the big number: room for files, and who can use it (what's left in the program slots can't hold files)
@@ -748,8 +795,9 @@ function draw() {
   $('m-free').textContent = r.big ? sz(L.big.size) : anyOs ? sz(L.ffat.size) : '0';
   $('m-freeLab').textContent = anyOs ? 'room for your files' : 'no system to keep files';
   $('m-freeSplit').innerHTML = anyOs ? `One storage area for ${who}${r.tidyThere ? ' (TidyOS Pro keeps its files in a TidyPro folder there; a microSD card adds more)' : ''}.` : '';
+  if (r.v3 && anyOs) $('m-freeSplit').innerHTML = 'All of it for TidyOS Pro (a microSD card adds more). The V3 has 8 MB of flash, so there is no Shelf on it.';
   if (r.big) $('m-freeSplit').innerHTML = "All of it for TidyOS Pro: The Shelf's program, web app and old file areas become file room (a microSD card adds more).";
-  const fsBits = r.big ? 'TidyOS Pro' : r.fsUse.ffat ? 'shared by TidyOS Pro and The Shelf' : '';
+  const fsBits = r.big || r.v3 ? 'TidyOS Pro' : r.fsUse.ffat ? 'shared by TidyOS Pro and The Shelf' : '';
   const copy = r.writes.reduce((n, w) => n + (w.size || 0), 0);
   const rows = [
     ['Programs being copied', sz(r.programs)],
@@ -772,7 +820,7 @@ function draw() {
   if (canBig && !on('big')) notes.push("The Shelf is unticked, but its 5 MB still can't hold files. Tick <b>Give The Shelf's space to my files</b> to use it.");
   if (!r.writes.some(w => w.file || w.fill > 0x2000)) notes.push('Nothing to install yet: tick something.');
   $('m-note').innerHTML = notes.join('<br>');
-  $('s-wfat').textContent = r.big ? '12.4 MB' : '7.4 MB';
+  $('s-wfat').textContent = r.v3 ? '4.4 MB' : r.big ? '12.4 MB' : '7.4 MB';
   $('pkGo').textContent = r.writes.length ? `Install (${sz(copy)})` : 'Install';
 }
 
@@ -799,19 +847,34 @@ $('pkGo').onclick = async () => {
   at = 'pk';
   let port;
   try { port = await pickPort(); } catch (e) { show(friendly(e)); return; }
-  const roomAfter = r.big ? sz(L.big.size) + ' (TidyOS Pro only)' : r.fsUse.ffat ? sz(L.ffat.size) + ' (shared by TidyOS Pro and The Shelf)' : 'none';
+  const roomAfter = r.v3 ? sz(L.ffat.size) + ' (TidyOS Pro, Heltec V3)' : r.big ? sz(L.big.size) + ' (TidyOS Pro only)' : r.fsUse.ffat ? sz(L.ffat.size) + ' (shared by TidyOS Pro and The Shelf)' : 'none';
   if (!confirm(`Write these to the board?\n\n${list}${appsLine}\n\nRoom for files afterwards: ${roomAfter}. Back up first (step 1) if you might want the board as it is now.`)) return;
   let c; busy(true);
   try {
     show('Connecting…', 0);
     c = await connect(port);
-    if (c.bytes < FLASH) throw new Error(`This board has ${sz(c.bytes)} of flash, but Tidy Pro Plus needs a 16 MB Heltec V4`);
+    if (r.v3 && c.bytes >= 16 * 1048576) throw Object.assign(new Error(`This board has ${sz(c.bytes)} of flash: that's a Heltec V4, not a V3. Pick Heltec V4 (or V4-R8) above. Nothing was written.`), { plain: true });
+    if (c.bytes < FLASH) throw new Error(`This board has ${sz(c.bytes)} of flash, but this build needs ${sz(FLASH)}` + (r.v3 ? '' : ': a Heltec V3 has 8 MB, so pick Heltec V3 above'));
+    // Bootloader unticked: only safe when the board already has this layout. Otherwise the board's old partition table
+    // doesn't point at the slots being written and the boot loader keeps restarting. Checked before anything is written.
+    const ffatNow = await boardFfatAt(c);
+    if (!on('boot') && !r.big) {
+      const want = r.v3 ? L3.ffat.at : L4.ffat.at;
+      if (ffatNow !== want) throw Object.assign(new Error(`This board doesn't have the Tidy Pro Plus ${r.v3 ? 'Heltec V3 ' : ''}layout yet` +
+        (ffatNow === null ? ' (no partition table found)' : '') + ', so it needs a new partition table. Tick Bootloader + partition table and install again. Nothing was written.'), { plain: true });
+    }
+    if (r.v3) {                                   // first install on this V3 (another layout before): start its file storage blank
+      if (ffatNow !== L3.ffat.at && on('boot') && !r.writes.some(w => w.at === L3.ffat.at)) {
+        r.writes.push({ what: "Clear the start of the file storage (new layout)", at: L3.ffat.at, fill: 0x10000 }); r.writes.sort((a, b) => a.at - b.at);
+      }
+    } else {
     // Which layout is the board on now? (where its partition table puts the file storage)
-    const nowBig = (await boardFfatAt(c)) === L.big.at;
+    const nowBig = ffatNow === L.big.at;
     if (r.big && nowBig && !on('wfat')) r.writes = r.writes.filter(w => !w.bigWipe);     // already set up: keep its files
     if (!r.big && nowBig) {
       if (!on('boot')) throw Object.assign(new Error("This board has the TidyOS-Pro-only layout (big file storage). Tick Bootloader + partition table to put The Shelf back. Nothing was written."), { plain: true });
       if (!r.writes.some(w => w.at === L.ffat.at)) { r.writes.push({ what: "Wipe the board's file storage (the layout is changing)", at: L.ffat.at, fill: L.ffat.size }); r.writes.sort((a, b) => a.at - b.at); }
+    }
     }
     show('Downloading…', 0);
     const fileArray = [];

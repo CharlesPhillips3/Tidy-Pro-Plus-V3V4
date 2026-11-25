@@ -39,6 +39,7 @@ RGB888 themePal(int i);
 
 static WiFiServer    s_srv(80);
 static bool          s_listening = false;
+static bool          s_netMode = false;   // the hotspot passes the devices' "is there internet?" checks (see apNetConfig)
 static DNSServer     s_dns;
 static volatile bool s_ap = false;
 static WiFiClient    s_ws;
@@ -675,10 +676,14 @@ static size_t queueChanges()
 {
   if (outPending()) return 0;
   const int rb = gColors == 8 ? 240 : gColors == 2 ? 80 : 160;
-  if (!s_prev) {
+  // What the browser has: a copy of every row (PSRAM), so only the changed part of a row is sent. A board
+  // without PSRAM (the V3) can't spare that much, so it keeps a fingerprint of each row instead and sends
+  // a changed row whole.
+  static uint32_t * s_rowHash = nullptr;
+  if (!s_prev && !s_rowHash) {
     s_prev = (uint8_t *)heap_caps_malloc(SCREEN_H * 240, MALLOC_CAP_SPIRAM | MALLOC_CAP_8BIT);
-    if (!s_prev) s_prev = (uint8_t *)malloc(SCREEN_H * 240);
-    if (!s_prev) return 0;
+    if (!s_prev) s_rowHash = (uint32_t *)calloc(SCREEN_H, sizeof(uint32_t));
+    if (!s_prev && !s_rowHash) return 0;
     memset(s_rowOk, 0, sizeof(s_rowOk));
   }
   const size_t cap = sizeof(s_ob) - 4;
@@ -688,6 +693,20 @@ static size_t queueChanges()
   for (int k = 0; k < SCREEN_H; ++k) {
     int y = (s_scanY + k) % SCREEN_H;
     const uint8_t * live = (const uint8_t *)fabgl::VGAPalettedController::sgetScanline(y);
+    if (!s_prev) {                                 // fingerprint mode (no PSRAM)
+      uint32_t h = 2166136261u;
+      for (int i = 0; i < rb; ++i) h = (h ^ live[i]) * 16777619u;
+      if (s_rowOk[y] && h == s_rowHash[y]) continue;
+      if (pl + 4 + rb > cap) break;
+      memcpy(tmp, live, rb);
+      h = 2166136261u;
+      for (int i = 0; i < rb; ++i) h = (h ^ tmp[i]) * 16777619u;   // (of what's actually sent)
+      pay[pl++] = y & 255; pay[pl++] = y >> 8; pay[pl++] = 0; pay[pl++] = (uint8_t)rb;
+      memcpy(pay + pl, tmp, rb); pl += rb;
+      s_rowHash[y] = h; s_rowOk[y] = true;
+      ++cnt; lastY = y;
+      continue;
+    }
     uint8_t * prev = s_prev + y * 240;
     if (s_rowOk[y] && !memcmp(live, prev, rb)) continue;
     // copy first, then compare the copy: the other core may be drawing into this row right now, and the
@@ -847,7 +866,25 @@ static void handleHttp(WiFiClient c, const std::string & req)
     return;
   }
   std::string p = path.substr(0, path.find('?'));
-  if (p == "/favicon.ico") {
+  // "Devices reach TidyOS" hotspot: the "is there internet?" checks get the answers that mean yes
+  const char * ok = nullptr, * type = "text/plain";
+  int code = 200;
+  if (s_netMode) {
+    if (p == "/generate_204" || p == "/gen_204") code = 204, ok = "";                                     // Android, Chrome
+    else if (p == "/hotspot-detect.html" || p == "/library/test/success.html" || (p.size() > 5 && p.compare(p.size() - 5, 5, ".html") == 0 && req.find("CaptiveNetworkSupport") != std::string::npos))
+      ok = "<HTML><HEAD><TITLE>Success</TITLE></HEAD><BODY>Success</BODY></HTML>", type = "text/html";   // Apple
+    else if (p == "/connecttest.txt") ok = "Microsoft Connect Test";                                    // Windows 10 / 11
+    else if (p == "/ncsi.txt") ok = "Microsoft NCSI";                                                   // older Windows
+    else if (p == "/success.txt" || p == "/canonical.html") ok = "success\n";                           // Firefox
+    else if (p == "/check_network_status.txt") ok = "NetworkManager is online\n";                       // Linux
+  }
+  if (ok) {
+    char h[160];
+    snprintf(h, sizeof(h), "HTTP/1.1 %d %s\r\nContent-Type: %s\r\nContent-Length: %u\r\nCache-Control: no-cache\r\nConnection: close\r\n\r\n",
+             code, code == 204 ? "No Content" : "OK", type, (unsigned)strlen(ok));
+    c.print(h);
+    if (*ok) c.print(ok);
+  } else if (p == "/favicon.ico") {
     c.print("HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
   } else if (p != "/" && p != "/index.html") {
     // phones' "is there internet?" checks and anything else: a tiny redirect to the desktop
@@ -869,6 +906,103 @@ static void handleHttp(WiFiClient c, const std::string & req)
 
 // ---------------------------------------------------------------- setup hotspot
 static bool s_captive = false;      // the hotspot is a sign-in page (first setup only)
+
+// ---- "Devices reach TidyOS" hotspot (the default): the hotspot hands out itself as gateway and DNS server and
+// answers Windows', Apple's and Android's internet checks the way they expect. The devices then treat the hotspot as
+// their network and send everything there, so http://10.1.1.250 opens in any browser, even with mobile data on
+// (with no gateway they mark it "no internet" and Android, Windows and iPhones send the browser over cellular instead).
+// Only the check addresses and TidyOS's own names get an answer; every other name is "doesn't exist", so phones'
+// background traffic fails at once instead of filling the board's four connection slots.
+static WiFiUDP s_udns;
+static bool    s_udnsOn = false;
+static bool dnsKnown(const char * n, uint32_t & ip)
+{
+  static const char * const names[] = {
+    // Android (Google, Samsung, Xiaomi, Huawei)
+    "connectivitycheck.gstatic.com", "connectivitycheck.android.com", "clients1.google.com", "clients3.google.com",
+    "play.googleapis.com", "www.google.com", "connect.rom.miui.com", "connectivitycheck.platform.hicloud.com",
+    // Apple
+    "captive.apple.com", "www.apple.com", "www.appleiphonecell.com", "www.thinkdifferent.us", "www.airport.us", "www.itools.info", "www.ibook.info",
+    // Windows
+    "www.msftconnecttest.com", "www.msftncsi.com", "ipv6.msftconnecttest.com",
+    // Firefox, Linux
+    "detectportal.firefox.com", "nmcheck.gnome.org", "connectivity-check.ubuntu.com",
+    // TidyOS's own names: http://tidyos or http://tidy also open the desktop on the hotspot
+    "tidyos", "tidy", "tidyos.lan", "tidyos.local",
+  };
+  ip = (uint32_t)WiFi.softAPIP();
+  if (!strcmp(n, "dns.msftncsi.com")) { ip = (uint32_t)IPAddress(131, 107, 255, 255); return true; }   // Windows' DNS check wants exactly this
+  for (auto k : names) if (!strcmp(n, k)) return true;
+  static std::string host;
+  if (host.empty()) { host = boardHost(); for (auto & c : host) c = tolower(c); }
+  if (!strcmp(n, host.c_str())) return true;
+  return host.size() && !strncmp(n, host.c_str(), host.size()) && (!strcmp(n + host.size(), ".local") || !strcmp(n + host.size(), ".lan"));
+}
+static void dnsPoll()
+{
+  for (int k = 0; k < 4; ++k) {
+    int len = s_udns.parsePacket();
+    if (len <= 0) return;
+    static uint8_t q[512];
+    if (len > (int)sizeof(q)) { s_udns.flush(); continue; }
+    len = s_udns.read(q, len);
+    if (len < 17 || (q[2] & 0x80) || q[4] != 0 || q[5] != 1) continue;   // one question, and a query
+    char name[128]; int ni = 0, p = 12;
+    while (p < len && q[p]) {
+      int l = q[p++];
+      if (l > 63 || p + l > len || ni + l + 1 >= (int)sizeof(name)) { ni = -1; break; }
+      if (ni) name[ni++] = '.';
+      for (int i = 0; i < l; ++i) name[ni++] = tolower(q[p + i]);
+      p += l;
+    }
+    if (ni < 0 || p + 5 > len) continue;
+    name[ni] = 0;
+    p++;                                                   // the 0 at the end of the name
+    uint16_t qtype = q[p] << 8 | q[p + 1];
+    int qend = p + 4;
+    uint32_t ip;
+    bool known = dnsKnown(name, ip);
+    static uint8_t r[512 + 16];
+    memcpy(r, q, qend);
+    r[2] = 0x84 | (q[2] & 0x01);                           // response, authoritative, copy "recursion desired"
+    r[3] = 0x80 | (known ? 0 : 3);                         // recursion available; "no such name" for the rest
+    r[6] = r[7] = r[8] = r[9] = r[10] = r[11] = 0;
+    int n = qend;
+    if (known && qtype == 1) {                             // an A record; other types (IPv6...): none, but no error
+      r[7] = 1;
+      const uint8_t a[] = { 0xC0, 0x0C, 0, 1, 0, 1, 0, 0, 0, 30, 0, 4 };
+      memcpy(r + n, a, sizeof(a)); n += sizeof(a);
+      memcpy(r + n, &ip, 4); n += 4;
+    }
+    s_udns.beginPacket(s_udns.remoteIP(), s_udns.remotePort());
+    s_udns.write(r, n);
+    s_udns.endPacket();
+  }
+}
+
+// What the hotspot's DHCP server hands out. Needs the hotspot up.
+static void apNetConfig()
+{
+  esp_netif_t * ap = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
+  if (!ap) return;
+  s_netMode = !s_captive && !gSet.hotspotCell;
+  esp_netif_dhcps_stop(ap);
+  dhcps_offer_t give = (s_captive || s_netMode) ? 1 : 0;   // captive / "devices reach TidyOS": gateway + DNS = the board
+  esp_netif_dhcps_option(ap, ESP_NETIF_OP_SET, ESP_NETIF_ROUTER_SOLICITATION_ADDRESS, &give, sizeof(give));
+  esp_netif_dhcps_option(ap, ESP_NETIF_OP_SET, ESP_NETIF_DOMAIN_NAME_SERVER, &give, sizeof(give));
+  if (give) {
+    esp_netif_dns_info_t d = {};
+    d.ip.type = ESP_IPADDR_TYPE_V4;
+    d.ip.u_addr.ip4.addr = (uint32_t)WiFi.softAPIP();
+    esp_netif_set_dns_info(ap, ESP_NETIF_DNS_MAIN, &d);
+  }
+  esp_netif_dhcps_start(ap);
+  if (s_netMode && !s_udnsOn) s_udnsOn = s_udns.begin(53);
+  if (!s_netMode && s_udnsOn) { s_udns.stop(); s_udnsOn = false; }
+  Serial.printf("[TidyOS] hotspot: %s\n", s_captive ? "sign-in page (first setup)" :
+                s_netMode ? "devices treat it as their network (10.1.1.250 always opens; no phone internet meanwhile)"
+                          : "phones keep their own internet (Android may need \"Stay connected\" or mobile data off)");
+}
 static bool s_staPaused = false;    // not looking for home Wi-Fi while devices use the hotspot
 // While a phone or laptop is on the hotspot and home Wi-Fi isn't in range, stop looking for it: each
 // search hops the radio across channels, and the hotspot's devices drop off. Look again once they've gone.
@@ -911,28 +1045,30 @@ static void apStart()
   WiFi.softAP(apName.c_str(), SCREEN_AP_PASS, WiFi.status() == WL_CONNECTED ? WiFi.channel() : 1, 0, 4);
   // a fixed address, the same as The Shelf's own Wi-Fi: http://10.1.1.250 (phones get 10.1.1.100 and up)
   WiFi.softAPConfig(IPAddress(10, 1, 1, 250), IPAddress(10, 1, 1, 250), IPAddress(255, 255, 255, 0), IPAddress(10, 1, 1, 100));
-  WiFi.setTxPower(WIFI_POWER_11dBm);
+  // 15 dBm: reaches a laptop across the room or the next one (11 dBm was too weak for some Windows PCs),
+  // still well short of the peaks that can dip the 3.3 V supply
+  WiFi.setTxPower(WIFI_POWER_15dBm);
   WiFi.setSleep(false);
+  // plain WPA2 (this IDF's hotspot has no PMF), the usual beacon timing: what Windows drivers and older phones join best
+  {
+    wifi_config_t cfg;
+    if (esp_wifi_get_config(WIFI_IF_AP, &cfg) == ESP_OK) {
+      cfg.ap.authmode = WIFI_AUTH_WPA2_PSK;
+      cfg.ap.beacon_interval = 100;
+      esp_wifi_set_config(WIFI_IF_AP, &cfg);
+    }
+  }
   delay(100);
   Serial.printf("[TidyOS] hotspot up on channel %d, free RAM %u\n", WiFi.channel(), (unsigned)ramFree());
   // First setup (no Wi-Fi saved yet): a sign-in page, so the phone pops TidyOS up by itself.
-  // Otherwise (at work, in the car): no gateway and no DNS, like The Shelf's own Wi-Fi. Phones then
-  // say "no internet", stay joined, don't nag "Action needed" and keep using cellular for the
-  // rest (the desktop's weather and news come over that).
+  // Otherwise (Switch in Settings > Run TidyOS Hotspot): either the devices treat the hotspot as their network
+  // (the default: 10.1.1.250 always opens), or, as before, no gateway and no DNS so phones keep using cellular.
   s_captive = !gSet.ssid.length();
   if (s_captive) {
     s_dns.setErrorReplyCode(DNSReplyCode::NoError);
     s_dns.start(53, "*", WiFi.softAPIP());
-  } else {
-    esp_netif_t * ap = esp_netif_get_handle_from_ifkey("WIFI_AP_DEF");
-    if (ap) {
-      esp_netif_dhcps_stop(ap);
-      dhcps_offer_t none = 0;
-      esp_netif_dhcps_option(ap, ESP_NETIF_OP_SET, ESP_NETIF_ROUTER_SOLICITATION_ADDRESS, &none, sizeof(none));
-      esp_netif_dhcps_option(ap, ESP_NETIF_OP_SET, ESP_NETIF_DOMAIN_NAME_SERVER, &none, sizeof(none));
-      esp_netif_dhcps_start(ap);
-    }
   }
+  apNetConfig();
   s_ap = true;
   s_apSince = millis();
   Serial.printf("[TidyOS] setup hotspot \"%s\" (password %s) - open http://%s\n", SCREEN_AP_NAME, SCREEN_AP_PASS, WiFi.softAPIP().toString().c_str());
@@ -943,6 +1079,8 @@ static void apStop()
   if (!s_ap) return;
   if (s_captive) s_dns.stop();
   s_captive = false;
+  if (s_udnsOn) { s_udns.stop(); s_udnsOn = false; }
+  s_netMode = false;
   staPause(false);
   WiFi.softAPdisconnect(true);
   WiFi.mode(WIFI_STA);
@@ -964,7 +1102,8 @@ static void apManage()
     static uint32_t emptySince = 0;
     int n = s_ap ? WiFi.softAPgetStationNum() : 0;
     if (n > 0) emptySince = 0; else if (!emptySince) emptySince = now;
-    if (s_ap && !sta && n > 0 && gSet.ssid.length() && now - s_apSince > 15000) staPause(true);
+    // (soon after a device joins: each search for home Wi-Fi hops channels, and a PC or phone still joining gives up)
+    if (s_ap && !sta && n > 0 && gSet.ssid.length() && now - s_apSince > 5000) staPause(true);
     else if (s_staPaused && (n == 0 && now - emptySince > 30000)) staPause(false);   // all gone for 30 s: look again
   }
   // on home Wi-Fi for 2 minutes and nobody uses the hotspot: close it
@@ -1033,6 +1172,7 @@ static void screenTask(void *)
       if (!s_listening && (s_ap || WiFi.status() == WL_CONNECTED)) { s_srv.begin(); s_srv.setNoDelay(true); s_listening = true; }
     }
     if (s_ap && s_captive) for (int i = 0; i < 4; ++i) s_dns.processNextRequest();   // answer a burst of lookups promptly
+    if (s_ap && s_udnsOn) dnsPoll();
     if (s_listening) pollHttp();
     if (s_view) {
       if (!s_ws.connected() || !pollInput(s_ws)) { dropViewer(); Serial.println("[TidyOS] browser left"); }
@@ -1131,6 +1271,7 @@ void screenTrim()            // the Optimize button: let go of what isn't being 
 }
 // "Run TidyOS Hotspot": TidyOS leaves the home Wi-Fi and runs only its own network (devices join it
 // directly). Off again: back to the saved Wi-Fi; the hotspot closes once that's joined.
+void screenHotspotMode() { if (s_ap) apNetConfig(); }
 void screenHotspot(bool on)
 {
   gSet.hotspot = on;

@@ -76,6 +76,9 @@ void saveSettings()
 // ---- front-end module (GC1109 on V4.2, KCT8103L on V4.3): powered, enabled, in receive
 static void femReceive(bool on)
 {
+#ifndef HAS_FEM
+  (void)on; return;                    // V3: no front-end module
+#endif
   pinMode(FEM_POWER, OUTPUT); pinMode(FEM_EN, OUTPUT);
   pinMode(FEM_CPS, OUTPUT);   pinMode(FEM_CTX, OUTPUT);
   digitalWrite(FEM_POWER, on ? HIGH : LOW);
@@ -227,7 +230,13 @@ static std::vector<std::vector<uint8_t>> s_meshTx;
 static volatile int s_meshSent = 0, s_meshHeard = 0;
 static const int8_t MESH_CHIP_DBM = 9;                        // + ~11 dB from the V4's front end: about 20 dBm out
 
-void meshEnable(bool on) { s_meshWanted = on; }
+void meshEnable(bool on) {
+  s_meshWanted = on;
+#ifdef TIDYOS_V3
+  if (on && !s_radio) begin();                    // (the V3 starts its radio only when it's wanted)
+#endif
+}
+bool wake() { if (!s_radio) begin(); return s_ok; }
 void meshOnReceive(void (*fn)(const uint8_t *, size_t)) { s_meshRx = fn; }
 bool meshListening() { return s_mode == Mode::Mesh; }
 void meshCounts(int & sent, int & heard) { sent = s_meshSent; heard = s_meshHeard; }
@@ -278,9 +287,13 @@ static void doMesh()
         s_meshTx.push_back(std::move(t));
         vTaskDelay(pdMS_TO_TICKS(300 + esp_random() % 600));
       } else {
+#ifdef HAS_FEM
         digitalWrite(FEM_CPS, HIGH); digitalWrite(FEM_CTX, HIGH);   // front end to transmit (V4.2 / V4.3)
+#endif
         if (s_radio->transmit(t.data(), t.size()) == RADIOLIB_ERR_NONE) s_meshSent++;
+#ifdef HAS_FEM
         digitalWrite(FEM_CPS, LOW); digitalWrite(FEM_CTX, LOW);
+#endif
       }
       s_radio->startReceive();
     }
@@ -347,11 +360,15 @@ void powerDown()
   for (int i = 0; i < 40 && s_mode != Mode::Off; ++i) delay(10);
   if (s_radio && s_ok) { s_radio->standby(); s_radio->sleep(); }
   femReceive(false);
+#ifdef HAS_FEM
   digitalWrite(FEM_POWER, LOW);
+#endif
 #if CONFIG_SPIRAM_MODE_OCT
   pinMode(PIN_VEXT_R8, OUTPUT); digitalWrite(PIN_VEXT_R8, HIGH);  // Vext (OLED) off
 #else
+#ifdef HAS_GNSS
   pinMode(GNSS_EN, OUTPUT); digitalWrite(GNSS_EN, HIGH);          // GNSS header power off
+#endif
   pinMode(PIN_VEXT, OUTPUT); digitalWrite(PIN_VEXT, HIGH);        // Vext (OLED) off
 #endif
 }
@@ -497,6 +514,11 @@ bool gnssRunning() { return s_gnssState > 0; }
 bool gnssStart()
 {
   if (s_gnssState) return s_gnssState > 0;
+#ifndef HAS_GNSS
+  s_gnssState = -1;
+  Serial.println("[TidyOS Pro] Heltec V3: no GNSS header, not looking for a GPS");
+  return false;
+#endif
   if (!gpsSwitchOn()) {
     s_gnssState = -1;
     Serial.println("[TidyOS Pro] GPS switched off (Switches): not looking for one");
@@ -546,6 +568,7 @@ Settings gSettings; Spectrum * gSpec = nullptr; Listen * gListen = nullptr; Gnss
 bool begin() { return false; }
 const char * lastError() { return "This board has no 900 MHz radio"; }
 bool radioOk() { return false; }
+bool wake() { return false; }
 void setMode(Mode, int) {}
 void powerDown() {}
 Mode mode() { return Mode::Off; }

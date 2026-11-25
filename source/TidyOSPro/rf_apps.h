@@ -64,7 +64,7 @@ static void rfSavedNote(uiFrame * f, const char * app, const std::string & path,
 
 static bool rfNeedRadio(const char * app)
 {
-  if (rf::radioOk()) return true;
+  if (rf::wake()) return true;
   std::string m = std::string("The 900 MHz radio isn't working: ") + rf::lastError();
   gApp->messageBox(app, m.c_str(), "OK", nullptr, nullptr, uiMessageBoxIcon::Warning);
   return false;
@@ -200,7 +200,7 @@ public:
     auto hint = label("Click the graph to pick a channel. Black = average, blue = peak, grey = peak hold.", cx + 350, cy + 404, 268, 18);
     hint->labelStyle().textFont = &FONT_std_12;
     showSettings();
-    if (rf::mode() == rf::Mode::Off && rf::radioOk()) rf::setMode(rf::Mode::Sweep);
+    if (rf::mode() == rf::Mode::Off && rf::wake()) rf::setMode(rf::Mode::Sweep);
     refresh(true);
     startTimer(400);
     onTimer = [this](uiTimerHandle) { refresh(false); };
@@ -283,7 +283,7 @@ public:
         double busy = rf::gSpec->samples[c] ? 100.0 * rf::gSpec->busy[c] / rf::gSpec->samples[c] : 0;
         snprintf(b, sizeof(b), "%s (ch %d): avg %.1f, peak %.1f, hold %.1f dBm, busy %.1f%%.   %u sweeps, %u ms each%s",
                  f, c, rf::gSpec->avg[c], rf::gSpec->peak[c], rf::gSpec->hold[c], busy, (unsigned)sw, (unsigned)rf::gSpec->sweepMs,
-                 rf::radioOk() ? "" : "   (no radio)");
+                 rf::wake() ? "" : "   (no radio)");
       } else
         snprintf(b, sizeof(b), "%u sweeps, %u ms each, 129 channels of 200 kHz.  Readings at the antenna, corrected by the settings below.", (unsigned)sw, (unsigned)rf::gSpec->sweepMs);
       status2->setText(b);
@@ -404,7 +404,7 @@ public:
     auto note = label("Counts energy bursts above the noise, so it works for OpenWay (hw 2/3/3.1) and Riva alike. It can't read or decode them.", cx, cy + 410, 606, 18);
     note->labelStyle().textFont = &FONT_std_12;
     if (rf::gListen && rf::mode() == rf::Mode::Listen) { char b[16]; snprintf(b, sizeof(b), "%.1f", rf::chFreq(rf::gListen->ch)); freqEd->setText(b); }
-    else if (rf::mode() == rf::Mode::Off && rf::radioOk()) rf::setMode(rf::Mode::Sweep);
+    else if (rf::mode() == rf::Mode::Off && rf::wake()) rf::setMode(rf::Mode::Sweep);
     refresh();
     startTimer(500);
     onTimer = [this](uiTimerHandle) { refresh(); };
@@ -760,7 +760,7 @@ public:
       "calibrated broadband RF exposure meter. Meters and their ICMs are FCC-certified to meet these limits at 20 cm.",
     };
     for (int i = 0; i < 5; ++i) { auto n = label(notes[i], cx, cy + 320 + i * 16, 540, 16); n->labelStyle().textFont = &FONT_std_12; }
-    if (rf::mode() == rf::Mode::Off && rf::radioOk()) rf::setMode(rf::Mode::Sweep);
+    if (rf::mode() == rf::Mode::Off && rf::wake()) rf::setMode(rf::Mode::Sweep);
     work();
     refresh();
     startTimer(1000);
@@ -999,7 +999,7 @@ public:
   bool withShelf = false, autoPins = false;
   CloneApp() : AppFrame("Clone to another V4", Point(40, 12), Size(560, 436), &inst) {
     static const char * how[] = {
-      "Copies this board's firmware onto another Heltec V4 by wire. Your settings, Wi-Fi password",
+      "Copies this board's firmware onto another " TIDYOS_BOARD " by wire. Your settings, Wi-Fi password",
       "and files are NOT copied: the other board starts fresh, at the boot menu.",
       "",
       "  This board  GPIO 43 (TX)  ->  RX  (GPIO 44)  other V4",

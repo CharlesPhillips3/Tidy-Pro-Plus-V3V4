@@ -251,8 +251,9 @@ static void cloneTask(void * a)
     else { say("Staying at 115200 baud (slower)."); }
     uint8_t att[8] = { 0 };
     command(0x0D, att, 8, 1000);                                       // SPI attach (ignore older ROMs' complaints)
-    uint8_t prm[24]; putU32(prm, 0); putU32(prm + 4, 16 * 1024 * 1024); putU32(prm + 8, 64 * 1024); putU32(prm + 12, 4096); putU32(prm + 16, 256); putU32(prm + 20, 0xFFFF);
-    command(0x0B, prm, 24, 1000);                                      // 16 MB flash
+    uint32_t flashSz = 16 * 1024 * 1024; esp_flash_get_size(nullptr, &flashSz);   // same size as this board (V3: 8 MB)
+    uint8_t prm[24]; putU32(prm, 0); putU32(prm + 4, flashSz); putU32(prm + 8, 64 * 1024); putU32(prm + 12, 4096); putU32(prm + 16, 256); putU32(prm + 20, 0xFFFF);
+    command(0x0B, prm, 24, 1000);                                      // flash size
     uint32_t done = 0;
     for (auto & r : regs) { if (!(ok = writeRegion(r, done, total))) break; }
   }
