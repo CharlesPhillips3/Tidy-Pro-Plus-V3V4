@@ -117,6 +117,7 @@ table.mt.sh td:first-child{width:22px}table.mt.sh th{text-align:left;font-weight
 table.mt.sh td:last-child{text-align:right}table.mt.sh tr.off td{opacity:.45}
 .xbtn{background:none;border:1px solid var(--divider);color:var(--muted);border-radius:8px;padding:2px 8px;margin-left:6px;cursor:pointer;font:inherit;font-size:12px}
 .xbtn:hover{color:#ff8080;border-color:#ff8080}
+.xbtn.sv{color:var(--accent);border-color:var(--accent)}.xbtn.sv:hover{color:#fff;background:var(--accent)}
 table.mt.sh td:nth-child(n+3){font-variant-numeric:tabular-nums;white-space:nowrap}
 table.mt.sh a{color:var(--accent)}
 details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var(--muted);font-size:14px}
@@ -269,7 +270,7 @@ details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var
     <p class="muted" style="margin-top:10px">Then copy the Music and Pictures folders onto the board's SD card, or drop the files onto the TidyOS Pro desktop in your browser: songs go to the Music folder and photos to Pictures (on the SD card, or the board's own storage without one), and the Music app plays them from there. Or send them over the USB cable with <a href="#usbfiles"><b>Copy music, pictures and files</b></a> just below. Easier still: drop your MP3s and photos straight onto the desktop, and TidyOS Pro shrinks them the same way as they go in (hold Alt while dropping to send them as they are).</p>
   </div>
 
-  <h2 id="usbfiles">Copy music, pictures and files to the board</h2>
+  <h2 id="usbfiles">Copy files to and from the board</h2>
   <p>Put music, pictures and other files on the board with just the USB cable: no Wi-Fi or card reader needed. Plug the board in with TidyOS Pro running (3.4.5 or newer), click <b>Connect</b> and pick its port, then pick the SD card or the board's own storage, open a folder and drop files in. <b>Music</b> jumps to the folder the Music app plays from. Songs shrunk above (Opus) fit about three times as many. It goes at roughly 50&ndash;150 KB a second, so a shrunk song takes 10&ndash;30 seconds. This shares the USB port with the serial console at the bottom of the page.</p>
   <div class="card">
     <div class="con-bar">
@@ -281,6 +282,12 @@ details.classic{margin-top:14px}details.classic summary{cursor:pointer;color:var
       <button class="chip" id="fmNew" disabled>New folder</button>
       <label class="chip" id="fmAddL" style="cursor:pointer">Add files&hellip;<input type="file" id="fmPick" multiple hidden></label>
       <span class="muted" id="fmFree"></span>
+    </div>
+    <div class="con-bar" style="margin-top:8px">
+      <button class="chip" id="fmSaveSel" disabled>&#11015; Save ticked</button>
+      <button class="chip" id="fmSaveDir" disabled>&#11015; Save this folder (ZIP)</button>
+      <button class="chip" id="fmStop" hidden>Stop after this file</button>
+      <span class="muted">Gets files off the SD card or the board's storage onto this computer. One file saves as itself, several as a ZIP. About 8 KB/s over USB, so 1 MB takes about 2 minutes.</span>
     </div>
     <div class="muted" id="fmPath" style="margin:8px 0 6px">Not connected</div>
     <div class="drop" id="fmDrop">Drop files here to copy them into this folder</div>
@@ -1045,7 +1052,7 @@ function fmAsk(cmd, multi, ms = 8000) {
 }
 const fmKB = n => n >= 1073741824 ? (n / 1073741824).toFixed(1) + ' GB' : n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(n ? 1 : 0, Math.round(n / 1024)) + ' KB';
 function fmShow(msg, frac) { $('fmStatus').hidden = false; $('fmMsg').textContent = msg; $('fmFill').style.width = Math.round((frac || 0) * 100) + '%'; }
-function fmEnable(on) { ['fmRoot', 'fmUp', 'fmMusic', 'fmPics', 'fmNew'].forEach(i => $(i).disabled = !on); $('fmGo').textContent = on ? 'Refresh' : 'Connect'; }
+function fmEnable(on) { ['fmRoot', 'fmUp', 'fmMusic', 'fmPics', 'fmNew', 'fmSaveSel', 'fmSaveDir'].forEach(i => $(i).disabled = !on); $('fmGo').textContent = on ? 'Refresh' : 'Connect'; }
 async function fmRoots() {
   const r = await fmAsk('roots', true);
   const sel = $('fmRoot'); sel.innerHTML = '';
@@ -1061,16 +1068,20 @@ async function fmOpen(dir) {
   $('fmPath').textContent = dir.replace(fm.root, $('fmRoot').selectedOptions[0].textContent) || '/';
   const rows = r.lines.map(l => { const [k, sz, name] = l.slice(2).split('\t'); return { dir: k === 'd', size: +sz, name }; })
     .sort((a, b) => (b.dir - a.dir) || a.name.localeCompare(b.name));
-  const t = $('fmList'); t.innerHTML = '<tr><th></th><th>Name</th><th>Size</th><th></th></tr>';
+  const t = $('fmList'); t.innerHTML = '<tr><th><input type="checkbox" id="fmAll" title="Tick everything here"></th><th>Name</th><th>Size</th><th></th></tr>';
+  fm.rows = rows;
+  $('fmAll').onchange = function () { for (const c of t.querySelectorAll('input.fmTick')) c.checked = this.checked; };
   if (!rows.length) t.insertAdjacentHTML('beforeend', '<tr><td></td><td class="muted">(empty)</td><td></td><td></td></tr>');
   for (const e of rows) {
     const tr = document.createElement('tr');
     tr.innerHTML = '<td></td><td></td><td></td><td></td>';
-    tr.cells[0].textContent = e.dir ? '\u{1F4C1}' : '';
+    const tick = document.createElement('input'); tick.type = 'checkbox'; tick.className = 'fmTick'; tick.dataset.name = e.name;
+    tr.cells[0].appendChild(tick);
+    if (e.dir) tr.cells[0].insertAdjacentText('beforeend', ' \u{1F4C1}');
     tr.cells[1].textContent = e.name; tr.cells[2].textContent = e.dir ? '' : fmKB(e.size);
     const path = dir + '/' + e.name;
     if (e.dir) { tr.cells[1].style.cursor = 'pointer'; tr.cells[1].style.color = 'var(--accent)'; tr.cells[1].onclick = () => fmGo(() => fmOpen(path)); }
-    else { const a = document.createElement('a'); a.href = '#'; a.textContent = 'Save'; a.onclick = ev => { ev.preventDefault(); fmGo(() => fmGet(path, e.name, e.size)); }; tr.cells[3].appendChild(a); }
+    else { const a = document.createElement('button'); a.className = 'xbtn sv'; a.textContent = '\u2B07 Save'; a.title = 'Save to this computer'; a.onclick = () => fmGo(() => fmGet(path, e.name, e.size)); tr.cells[3].appendChild(a); }
     const x = document.createElement('button'); x.className = 'xbtn'; x.textContent = 'Delete';
     x.onclick = () => { if (confirm('Delete ' + e.name + ' from the board?' + (e.dir ? ' (A folder has to be empty.)' : ''))) fmGo(async () => { await fmAsk('rm ' + path); await fmRoots(); await fmOpen(dir); }); };
     tr.cells[3].appendChild(x);
@@ -1102,21 +1113,114 @@ async function fmPut(files) {
   fmShow(`Copied ${list.length} file${list.length === 1 ? '' : 's'}.`, 1);
   await fmRoots(); await fmOpen(fm.cwd);
 }
-async function fmGet(path, name, size) {
+// read one file off the board; prog(bytesSoFar) as it comes in
+function fmRead(path, prog) {
   const chunks = []; let got = 0;
-  const r = await new Promise((res, rej) => {               // (like fmAsk, but saves the "d" lines as they come)
+  return new Promise((res, rej) => {
     let to; const arm = () => { clearTimeout(to); to = setTimeout(() => { fm.wait = null; rej(new Error("The board stopped answering.")); }, 8000); };
     arm();
     fm.wait = t => {
       if (t.startsWith('err ')) { clearTimeout(to); fm.wait = null; rej(new Error(t.slice(4))); return; }
-      if (t.startsWith('end')) { clearTimeout(to); fm.wait = null; res(t); return; }
-      if (t.startsWith('d ')) { const b = atob(t.slice(2)), u = new Uint8Array(b.length); for (let k = 0; k < b.length; k++) u[k] = b.charCodeAt(k); chunks.push(u); got += u.length; fmShow(`Reading ${name}: ${fmKB(got)} of ${fmKB(size)}`, size ? got / size : 0); }
+      if (t.startsWith('end')) {
+        clearTimeout(to); fm.wait = null;
+        const out = new Uint8Array(got); let o = 0; for (const c of chunks) { out.set(c, o); o += c.length; }
+        const want = +t.slice(4); if (want && want !== got) { rej(new Error(`Only ${got} of ${want} bytes arrived - try again.`)); return; }
+        res(out); return;
+      }
+      if (t.startsWith('d ')) { const b = atob(t.slice(2)), u = new Uint8Array(b.length); for (let k = 0; k < b.length; k++) u[k] = b.charCodeAt(k); chunks.push(u); got += u.length; if (prog) prog(got); }
       arm();
     };
     fmSend('get ' + path).catch(e => { clearTimeout(to); fm.wait = null; rej(e); });
   });
-  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(chunks)); a.download = name; a.click();
-  fmShow(`Saved ${name} (${fmKB(got)}).`, 1);
+}
+const fmTime = s => s < 60 ? Math.round(s) + ' s' : Math.floor(s / 60) + ' min ' + String(Math.round(s % 60)).padStart(2, '0') + ' s';
+function fmDownload(name, data) {
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([data])); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+// files [{path, name (in the ZIP), size}] -> read them all, with one progress bar
+async function fmReadMany(files) {
+  const total = files.reduce((a, f) => a + f.size, 0) || 1, t0 = Date.now(), out = [];
+  let before = 0;
+  fm.stop = false; $('fmStop').hidden = files.length < 2;
+  try {
+    for (let i = 0; i < files.length; i++) {
+      if (fm.stop) break;
+      const f = files[i];
+      const data = await fmRead(f.path, got => {
+        const done = before + got, s = (Date.now() - t0) / 1000, rate = done / Math.max(0.5, s);
+        fmShow(`Reading ${files.length > 1 ? `${i + 1} of ${files.length}: ` : ''}${f.name}  ${fmKB(done)} of ${fmKB(total)}, ${(rate / 1024).toFixed(1)} KB/s, about ${fmTime((total - done) / Math.max(1, rate))} left`, done / total);
+      });
+      before += f.size; out.push({ name: f.name, data });
+    }
+  } finally { $('fmStop').hidden = true; }
+  return out;
+}
+// a plain ZIP (stored, not compressed: the board's files are mostly CSV, MP3 and JPEG)
+const fmCrcT = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function fmCrc(d) { let c = 0xFFFFFFFF; for (let i = 0; i < d.length; i++) c = fmCrcT[(c ^ d[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function fmZip(files) {
+  const enc = new TextEncoder(), parts = [], cent = []; let off = 0;
+  const now = new Date(), dt = ((now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1)), dd = (((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate());
+  for (const f of files) {
+    const nm = enc.encode(f.name), crc = fmCrc(f.data), n = f.data.length;
+    const h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(8, 0, true);
+    h.setUint16(10, dt, true); h.setUint16(12, dd, true); h.setUint32(14, crc, true); h.setUint32(18, n, true); h.setUint32(22, n, true);
+    h.setUint16(26, nm.length, true); h.setUint16(28, 0, true);
+    parts.push(new Uint8Array(h.buffer), nm, f.data);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(10, 0, true);
+    c.setUint16(12, dt, true); c.setUint16(14, dd, true); c.setUint32(16, crc, true); c.setUint32(20, n, true); c.setUint32(24, n, true);
+    c.setUint16(28, nm.length, true); c.setUint32(42, off, true);
+    cent.push(new Uint8Array(c.buffer), nm);
+    off += 30 + nm.length + n;
+  }
+  const csize = cent.reduce((a, b) => a + b.length, 0);
+  const e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, csize, true); e.setUint32(16, off, true);
+  return new Blob([...parts, ...cent, new Uint8Array(e.buffer)], { type: 'application/zip' });
+}
+// every file under a folder, with names relative to `base`
+async function fmWalk(dir, rel, list) {
+  const r = await fmAsk('ls ' + dir, true);
+  for (const l of r.lines) {
+    const [k, sz, name] = l.slice(2).split('\t');
+    if (k === 'd') await fmWalk(dir + '/' + name, rel + name + '/', list);
+    else list.push({ path: dir + '/' + name, name: rel + name, size: +sz });
+  }
+  return list;
+}
+const fmZipName = () => ($('fmPath').textContent.replace(/[^A-Za-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'board') + '.zip';
+async function fmSaveFiles(files, zipName) {
+  if (!files.length) { fmShow('Nothing to save: tick some files (or folders) first.', 0); return; }
+  const t0 = Date.now();
+  const got = await fmReadMany(files);
+  const bytes = got.reduce((a, f) => a + f.data.length, 0), secs = (Date.now() - t0) / 1000;
+  if (got.length === 1 && files.length === 1 && !files[0].name.includes('/')) fmDownload(got[0].name, got[0].data);
+  else fmDownload(zipName, fmZip(got));
+  fmShow(`Saved ${got.length === 1 && files.length === 1 ? got[0].name : `${got.length} file${got.length === 1 ? '' : 's'} as ${zipName}`} (${fmKB(bytes)} in ${fmTime(secs)})` +
+         (got.length < files.length ? ` - stopped, ${files.length - got.length} not copied.` : '.') + ' It is in your Downloads folder.', 1);
+}
+async function fmGet(path, name, size) { await fmSaveFiles([{ path, name, size }], name); }
+async function fmSaveTicked() {
+  if (!fm.cwd) { fmShow('Connect first, then open a folder.', 0); return; }
+  const ticked = [...$('fmList').querySelectorAll('input.fmTick:checked')].map(c => c.dataset.name);
+  const list = [];
+  for (const n of ticked) {
+    const e = (fm.rows || []).find(r => r.name === n); if (!e) continue;
+    if (e.dir) { fmShow('Listing ' + n + '...', 0); await fmWalk(fm.cwd + '/' + n, n + '/', list); }
+    else list.push({ path: fm.cwd + '/' + n, name: n, size: e.size });
+  }
+  await fmSaveFiles(list, fmZipName());
+}
+async function fmSaveFolder() {
+  if (!fm.cwd) { fmShow('Connect first, then open a folder.', 0); return; }
+  fmShow('Listing the folder...', 0);
+  const list = await fmWalk(fm.cwd, '', []);
+  const total = list.reduce((a, f) => a + f.size, 0);
+  if (total > 4 * 1048576 && !confirm(`This folder holds ${list.length} files, ${fmKB(total)}. Over USB that takes about ${fmTime(total / 8000)}. Go ahead?`)) { fmShow('Not saved.', 0); return; }
+  await fmSaveFiles(list, fmZipName());
 }
 async function fmFolder(sub) {                  // Music / Pictures: on the card, or the board's TidyPro folder
   const base = fm.root === '/SD' ? '/SD' : fm.root + '/TidyPro';
@@ -1142,6 +1246,9 @@ $('fmGo').onclick = () => fmGo(async () => {
 $('fmRoot').onchange = () => fmGo(async () => { fm.root = $('fmRoot').value; await fmRoots(); await fmOpen(fm.root); });
 $('fmUp').onclick = () => fmGo(async () => { if (fm.cwd !== fm.root) await fmOpen(fm.cwd.slice(0, fm.cwd.lastIndexOf('/')) || fm.root); });
 $('fmMusic').onclick = () => fmGo(() => fmFolder('Music'));
+$('fmSaveSel').onclick = () => fmGo(fmSaveTicked);
+$('fmSaveDir').onclick = () => fmGo(fmSaveFolder);
+$('fmStop').onclick = () => { fm.stop = true; $('fmStop').textContent = 'Stopping after this file...'; setTimeout(() => $('fmStop').textContent = 'Stop after this file', 4000); };
 $('fmPics').onclick = () => fmGo(() => fmFolder('Pictures'));
 $('fmNew').onclick = () => { const n = prompt('Name of the new folder'); if (n && !/[\\/]/.test(n)) fmGo(async () => { await fmAsk('mkdir ' + fm.cwd + '/' + n); await fmOpen(fm.cwd); }); };
 $('fmPick').onchange = function () { const f = [...this.files]; this.value = ''; fmGo(() => fmPut(f)); };
