@@ -47,6 +47,7 @@ struct Spectrum {
   bool  overload = false;       // last sweep had samples near the receiver's top end
   uint32_t sweeps = 0;          // since reset
   uint32_t sweepMs = 0;         // how long one sweep took
+  uint32_t workMs = 0;          // of that, the radio's own work (tuning + listening); the rest went to other tasks
   uint32_t resetAt = 0;         // millis() at the last reset
   int8_t wf[WF_ROWS][NCH];      // waterfall: avg dBm per sweep, newest at wfHead-1
   int wfHead = 0;

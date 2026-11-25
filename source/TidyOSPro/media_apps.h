@@ -265,6 +265,7 @@ public:
   }
 };
 
+#if TIDY_PICTURES
 class PicturesApp : public AppFrame {
 public:
   static AppFrame * inst;
@@ -336,6 +337,19 @@ void openPictures(const char * file)
   PicturesApp::inst->open();
   if (file) ((PicturesApp *)PicturesApp::inst)->load(file);
 }
+#else
+// No Pictures app (room for the RF tools): show the picture in full colour in the web browser that's viewing the
+// desktop (what Pictures' "Full colour" button did), or say where else to open it.
+void openPictures(const char * file)
+{
+#ifdef TIDYOS_HTML5
+  if (file && netReachable()) { fileServerMedia(true); screenMedia(std::string("i ") + fileServerMediaPath(file)); return; }
+#endif
+  gApp->messageBox("Pictures", "Pictures are shown in your web browser: open the TidyOS desktop over Wi-Fi or the hotspot "
+                   "(http://10.1.1.250), then open the picture again, or use the Files button there to download it.",
+                   "OK", nullptr, nullptr, uiMessageBoxIcon::Info);
+}
+#endif
 
 // ---------------------------------------------------------------- Music
 

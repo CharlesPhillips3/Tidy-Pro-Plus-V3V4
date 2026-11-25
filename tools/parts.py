@@ -63,19 +63,19 @@ for b in ('v4', 'v4-r8', 'v3'):
     print(b, {k: v['size'] for k, v in info.items() if isinstance(v, dict)})
 # The desktop apps. bit = the firmware's bit number (core.cpp ALL_ICONS); full = only in the full build;
 # kb = about how much flash the app adds (measured: full build with and without it).
+# Left out of the firmware since 3.4.37 (room for the RF tools): Browser 13, Pictures 27, HTML Games 30, HTML Programs 31.
 out['apps'] = [
   # field tools
   ('RF Sweep', 0, 'field', 0, 0), ('Meter Traffic', 1, 'field', 0, 0), ('Site Survey', 2, 'field', 0, 0),
   ('RF Exposure', 3, 'field', 0, 0), ('GPS', 4, 'field', 0, 0), ('Clone', 5, 'field', 0, 0), ('Wi-Fi Scan', 6, 'field', 0, 0),
   # everyday TidyOS apps that are in both builds
   ('Tidy', 9, 'core', 0, 0), ('Neat', 10, 'core', 0, 0), ('Files', 11, 'core', 0, 0), ('Calculator', 12, 'core', 0, 0),
-  ('Browser', 13, 'core', 0, 0), ('Messages', 14, 'core', 0, 0), ('Clock', 15, 'core', 0, 0), ('Nic Sweep', 7, 'core', 0, 0),
+  ('Messages', 14, 'core', 0, 0), ('Clock', 15, 'core', 0, 0), ('Nic Sweep', 7, 'core', 0, 0),
   ('Ping', 8, 'core', 0, 0), ('Screenshot', 16, 'core', 0, 0), ('Git-Store', 17, 'core', 0, 0), ('Task Manager', 19, 'core', 0, 0),
   ('Switches', 20, 'core', 0, 0), ('The Shelf', 21, 'core', 0, 0), ('Settings', 18, 'core', 0, 0),
   # the rest of TidyOS-ESP32: only in the full build
   ('Ready', 22, 'extra', 1, 4), ('Steady', 23, 'extra', 1, 8), ('Rugged', 24, 'extra', 1, 171), ('Latch', 29, 'extra', 1, 30),
-  ('Games', 25, 'extra', 1, 51), ('Doodle', 26, 'extra', 1, 11), ('Pictures', 27, 'extra', 1, 1), ('Music', 28, 'extra', 1, 1),
-  ('HTML Games', 30, 'extra', 1, 1), ('HTML Programs', 31, 'extra', 1, 1),
+  ('Games', 25, 'extra', 1, 51), ('Doodle', 26, 'extra', 1, 11), ('Music', 28, 'extra', 1, 1),
 ]
 out['apps'] = [dict(zip(('name', 'bit', 'group', 'full', 'kb'), a)) for a in out['apps']]
 # what the flasher installs: versions and build date (shown on the page)

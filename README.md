@@ -13,6 +13,22 @@ next to the V4 and V4-R8. Pick the board at the top of the flasher.
 | Heltec V4 | 16 MB / 2 MB | TidyOS Pro + The Shelf (dual boot), or either one | 7.4 MB (12.4 MB TidyOS Pro only) |
 | Heltec V4-R8 | 16 MB / 8 MB | the same as the V4 | the same |
 
+### 3.4.37: more room and a faster sweep for the RF tools
+
+* **Left out to make room for the RF tools:** Browser, Pictures, HTML Games and HTML Programs (about 30 KB of the
+  program slot). Opening a picture from Files or Screenshot now shows it in full colour in the web browser that's
+  viewing the desktop. To put one back, build with `-DTIDY_BROWSER=1`, `-DTIDY_PICTURES=1` or `-DTIDY_HTML_APPS=1`.
+* **Faster sweep while the desktop is open in a browser:** the radio task now has the same priority as the task that
+  streams the screen, so they take turns instead of the sweep waiting (it took ~1.4 s a sweep). RF Sweep shows
+  "N ms each (radio working M ms)", so you can see how much time goes elsewhere.
+* **RF Exposure:**
+  * Each second counts every channel, using a channel's last reading when the sweep didn't reach it that second
+    (a sweep takes longer than a second; before, those channels counted as nothing and the figure read about a
+    quarter low).
+  * Tiny shares read as "1/110,000 of the limit" instead of "9.0e-04%".
+  * The CSV's % columns are in scientific notation (they were rounded to 0.00000), and each line is written to the
+    card straight away, so a copy taken while it logs has everything.
+
 ### 3.4.36: get files off the board in a web browser
 
 * **`http://<board>/files`** (on the hotspot: **http://10.1.1.250/files**), or the new **Files** button on the TidyOS

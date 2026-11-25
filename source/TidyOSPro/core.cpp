@@ -638,8 +638,12 @@ struct DeskIcon {
 
 static void openNeat0()    { openNeat(nullptr); }
 static void openTidy0()    { openTidy(nullptr); }
+#if TIDY_BROWSER
 static void openBrowser0() { openBrowser(nullptr); }
+#endif
+#if TIDY_PICTURES
 static void openPictures0() { openPictures(nullptr); }
+#endif
 
 // roughly how much memory each app takes while open (measured on the board), in KB
 static int appNeedKB(const char * label)
@@ -684,17 +688,23 @@ static const DeskIcon ALL_ICONS[] = {
 #endif
   { "Files",      ART_FILES, nullptr, openFiles, 11 },
   { "Calculator", ART_CALC,  nullptr, openCalculator, 12 },
+#if TIDY_BROWSER
   { "Browser",    nullptr,   "www",   openBrowser0, 13 },
+#endif
   { "Messages",   ART_MSG,   nullptr, openMessages, 14 },
   { "Clock",      ART_CLOCK, nullptr, openClock, 15 },
 #if TIDY_ALL_APPS
   { "Games",      ART_GAMES, nullptr, openGames, 25 },
   { "Doodle",     ART_DOODLE, nullptr, openDoodle, 26 },
+#if TIDY_PICTURES
   { "Pictures",   ART_PICS,  nullptr, openPictures0, 27 },
+#endif
   { "Music",      ART_MUSIC, nullptr, openMusic, 28 },
   { "Latch",      ART_LOCK,  nullptr, openLatch, 29 },
+#if TIDY_HTML_APPS
   { "HTML Games", ART_HTMLG, nullptr, openHtmlGames, 30 },
   { "HTML Programs", ART_HTMLP, nullptr, openHtmlPrograms, 31 },
+#endif
 #endif
   { "Screenshot", ART_SHOT,  nullptr, openShot, 16 },
   { "Git-Store",  ART_CLOUD, nullptr, openGitStore, 17 },

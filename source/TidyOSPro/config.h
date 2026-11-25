@@ -24,7 +24,18 @@
 // Git-Store: the Cloudflare relay every board uses unless one is typed in (see gitstore/README.md)
 #define TIDYOS_STORE_URL ""
 
-#define TIDYOS_VERSION "3.4.36"
+#define TIDYOS_VERSION "3.4.37"
+
+// Apps left out of every build to make room for the RF tools (build with -DTIDY_BROWSER=1 etc. to put one back)
+#ifndef TIDY_BROWSER
+#define TIDY_BROWSER 0
+#endif
+#ifndef TIDY_PICTURES
+#define TIDY_PICTURES 0
+#endif
+#ifndef TIDY_HTML_APPS
+#define TIDY_HTML_APPS 0
+#endif
 
 // Edition. The VGA edition draws on a monitor and uses Bluetooth keyboard + mouse.
 // The HTML5 edition shows the desktop in a web browser (keyboard + mouse come from the browser).

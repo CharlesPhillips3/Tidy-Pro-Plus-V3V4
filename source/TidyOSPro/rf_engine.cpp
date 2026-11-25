@@ -2,6 +2,7 @@
 // TidyOS Pro - 900 MHz engine (see rf_engine.h)
 #include "config.h"
 #include "rf_engine.h"
+#include <esp_timer.h>
 #ifdef TIDYOS_V4
 #include <SPI.h>
 #include <RadioLib.h>
@@ -125,7 +126,9 @@ static void doSweep()
   float thr = floorPrev + gSettings.threshDb;
   bool over = false;
   int each = imax(2, gSettings.dwellUs / 250);
+  int64_t work = 0;
   for (int c = 0; c < NCH && s_want == Mode::Sweep; ++c) {
+    int64_t w0 = esp_timer_get_time();
     tune(chFreq(c));
     delayMicroseconds(250);                       // RSSI settles
     double sum = 0, l = 0; float m = -200; int b = 0;
@@ -139,6 +142,7 @@ static void doSweep()
       delayMicroseconds(200);
     }
     avg[c] = (float)(sum / each); pk[c] = m; busyN[c] = b; nS[c] = each; lin[c] = l;
+    work += esp_timer_get_time() - w0;           // (includes time taken by other tasks mid-channel; counted below)
     if ((c & 15) == 15) vTaskDelay(1);           // let Wi-Fi and the desktop in
   }
   if (s_want != Mode::Sweep) return;
@@ -165,6 +169,7 @@ static void doSweep()
   gSpec->overload = over;
   gSpec->sweeps++;
   gSpec->sweepMs = millis() - t0;
+  gSpec->workMs = (uint32_t)(work / 1000);
 }
 
 static void doListen()
@@ -349,7 +354,9 @@ bool begin()
   }
   clearStats();
   gSpec->noiseFloor = -110;
-  if (s_ok) xTaskCreatePinnedToCore(radioTask, "rf", 10240, nullptr, 1, &s_task, 0);
+  // priority 2, the same as the desktop streaming to the browser ("screen"): the two share core 0 a tick at a
+  // time. At 1 the sweep only ran when the screen task was idle, and a sweep took ~1.4 s instead of ~0.4 s.
+  if (s_ok) xTaskCreatePinnedToCore(radioTask, "rf", 10240, nullptr, 2, &s_task, 0);
   return s_ok;
 }
 

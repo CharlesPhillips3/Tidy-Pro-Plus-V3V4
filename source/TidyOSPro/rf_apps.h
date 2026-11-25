@@ -22,6 +22,7 @@
 //   (it says so). For a measurement you can sign, use a calibrated RF exposure meter.
 
 #include "rf_engine.h"
+#include <unistd.h>
 #include <Preferences.h>
 #include <esp_partition.h>
 #include <esp_ota_ops.h>
@@ -285,7 +286,8 @@ public:
                  f, c, rf::gSpec->avg[c], rf::gSpec->peak[c], rf::gSpec->hold[c], busy, (unsigned)sw, (unsigned)rf::gSpec->sweepMs,
                  rf::wake() ? "" : "   (no radio)");
       } else
-        snprintf(b, sizeof(b), "%u sweeps, %u ms each, 129 channels of 200 kHz.  Readings at the antenna, corrected by the settings below.", (unsigned)sw, (unsigned)rf::gSpec->sweepMs);
+        snprintf(b, sizeof(b), "%u sweeps, %u ms each (radio working %u ms), 129 channels of 200 kHz.  Readings at the antenna, corrected below.",
+                 (unsigned)sw, (unsigned)rf::gSpec->sweepMs, (unsigned)rf::gSpec->workMs);
       status2->setText(b);
     }
     status->repaint(); status2->repaint();
@@ -737,6 +739,21 @@ void openSiteSurvey() { if (!SiteSurveyApp::inst) new SiteSurveyApp(); SiteSurve
 // densities are added up (each 200 kHz channel's time-average, summed = the band's time-average).
 // It's an estimate - see the notes at the top of this file.
 
+// a share of the limit people can read at a glance: "0.13%", or "1/1,100,000" when it's tiny
+static void expoFmtShare(char * b, size_t n, double pct)
+{
+  if (pct <= 0) { snprintf(b, n, "0"); return; }
+  if (pct >= 0.1) {
+    if (pct >= 10) snprintf(b, n, "%.0f%%", pct); else if (pct >= 1) snprintf(b, n, "%.1f%%", pct); else snprintf(b, n, "%.2f%%", pct);
+    return;
+  }
+  double r = 100.0 / pct, e = pow(10.0, floor(log10(r)) - 1);
+  unsigned long long v = (unsigned long long)(llround(r / e) * e);      // two significant figures
+  char d[32]; int k = 0; char t[32]; int m = snprintf(t, sizeof(t), "%llu", v);
+  for (int i = 0; i < m; ++i) { d[k++] = t[i]; if ((m - 1 - i) % 3 == 0 && i < m - 1) d[k++] = ','; }
+  d[k] = 0;
+  snprintf(b, n, "1/%s", d);
+}
 static void expoFmtPct(char * b, size_t n, double pct)
 {
   if (pct >= 10)       snprintf(b, n, "%.0f%%", pct);
@@ -871,6 +888,9 @@ public:
   uiButton * runBtn, * logBtn, * spanBtn;
   uiLabel * big, * side1, * side2, * verdict, * chartHdr, * st1, * st2;
   double prevLin[rf::NCH]; uint32_t prevSamp[rf::NCH]; bool havePrev = false;
+  // each channel's latest 1-second mean (mW): a sweep takes longer than a second, so in any one second some channels
+  // weren't visited; they count with their last reading instead of as nothing (which read about a quarter low)
+  double lastMw[rf::NCH];
   // 30-minute average: 30 one-minute buckets of summed density, plus this minute's
   double minSum[30] = {0}; int minN[30] = {0}; int minHead = 0; double curSum = 0; int curN = 0;
   double sesSum = 0; uint32_t sesN = 0; double sesPeak = 0; bool sesOverload = false; uint32_t sesStart = 0;
@@ -885,7 +905,7 @@ public:
     spanBtn = button("10 min", cx + 242, cy, 64);
     spanBtn->onClick = [this]() { cycleSpan(); };
     button("Calculator", cx + 312, cy, 86)->onClick = []() { openExposureCalc(); };
-    auto hint = label("Hold the board where a person stands (head / chest height), away from your body.", cx + 406, cy, 212, 28);
+    auto hint = label("Hold it at chest height, away from you.", cx + 406, cy + 5, 212, 16);
     hint->labelStyle().textFont = &FONT_std_12;
     big = label("", cx, cy + 28, 330, 30);
     big->labelStyle().textFont = &FONT_std_22;
@@ -900,6 +920,7 @@ public:
     st1 = label("", cx, cy + 382, 618, 16); st1->labelStyle().textFont = &FONT_std_12;
     st2 = label("", cx, cy + 398, 618, 16); st2->labelStyle().textFont = &FONT_std_12;
     for (auto & v : data.band) v = -130;
+    for (auto & v : lastMw) v = 0;
     sesStart = millis();
     // this app needs the sweep: take the radio if it's idle or on the Coms mesh (not from Meter Traffic)
     if ((rf::mode() == rf::Mode::Off || rf::mode() == rf::Mode::Mesh) && rf::wake()) rf::setMode(rf::Mode::Sweep);
@@ -920,6 +941,7 @@ public:
     memset(data.now, 0, sizeof(data.now)); memset(data.avg, 0, sizeof(data.avg)); data.head = data.filled = 0;
     memset(minSum, 0, sizeof(minSum)); memset(minN, 0, sizeof(minN)); minHead = 0; curSum = 0; curN = 0;
     sesSum = 0; sesN = 0; sesPeak = 0; sesOverload = false; sesStart = millis(); havePrev = false;
+    for (auto & v : lastMw) v = 0;
     chart->repaint();
   }
   void cycleSpan() {
@@ -977,17 +999,19 @@ public:
     bool restart = !havePrev;
     for (int c = 0; c < rf::NCH && !restart; ++c) if (sm[c] < prevSamp[c]) restart = true;   // reset in RF Sweep
     if (restart) { memcpy(prevLin, lin, sizeof(lin)); memcpy(prevSamp, sm, sizeof(sm)); havePrev = true; return; }
-    double S = 0, strongMw = 0; int strongCh = -1, got = 0;
+    double S = 0, strongMw = 0; int strongCh = -1, got = 0, known = 0;
     for (int c = 0; c < rf::NCH; ++c) {
       uint32_t n = sm[c] - prevSamp[c];
-      if (!n) { data.band[c] = -130; continue; }
-      double mw = (lin[c] - prevLin[c]) / n;
+      if (n) { double mw = (lin[c] - prevLin[c]) / n; if (mw > 0) { lastMw[c] = mw; ++got; } }
+      double mw = lastMw[c];                       // this second's reading, or the channel's last one
       if (mw <= 0) { data.band[c] = -130; continue; }
+      ++known;
       float dbm = 10 * log10(mw);
-      data.band[c] = dbm; ++got;
+      data.band[c] = dbm;
       S += rf::powerDensity(dbm, rf::gSettings.antGainDbi, rf::chFreq(c));
       if (mw > strongMw) { strongMw = mw; strongCh = c; }
     }
+    if (known < rf::NCH) { memcpy(prevLin, lin, sizeof(lin)); memcpy(prevSamp, sm, sizeof(sm)); return; }   // the first sweep isn't round yet
     memcpy(prevLin, lin, sizeof(lin)); memcpy(prevSamp, sm, sizeof(sm));
     if (!got) return;                                   // the sweep hasn't been round yet
     data.noise = nf; data.strongCh = strongCh;
@@ -1004,12 +1028,13 @@ public:
     // the readout
     char b[220], p1[24], p2[24];
     expoFmtPct(p1, sizeof(p1), pct);
+    expoFmtShare(p1, sizeof(p1), pct);
     snprintf(b, sizeof(b), "Now %s of the limit", p1); big->setText(b);
     big->labelStyle().textColor = pct >= 100 ? RF_RED : T.text;
-    expoFmtPct(p1, sizeof(p1), avgPct);
+    expoFmtShare(p1, sizeof(p1), avgPct);
     unsigned mins = totN / 60;
-    snprintf(b, sizeof(b), "FCC 30-min average: %s  (over %u %s so far)", p1, mins ? mins : (unsigned)totN, mins ? "min" : "s"); side1->setText(b);
-    expoFmtPct(p1, sizeof(p1), sesN ? sesSum / sesN / lim * 100 : 0); expoFmtPct(p2, sizeof(p2), sesPeak / lim * 100);
+    snprintf(b, sizeof(b), "FCC 30-min average: %s of the limit (%u %s so far)", p1, mins ? mins : (unsigned)totN, mins ? "min" : "s"); side1->setText(b);
+    expoFmtShare(p1, sizeof(p1), sesN ? sesSum / sesN / lim * 100 : 0); expoFmtShare(p2, sizeof(p2), sesPeak / lim * 100);
     unsigned ses = (millis() - sesStart) / 1000;
     snprintf(b, sizeof(b), "Since Reset (%u:%02u): average %s, worst second %s", ses / 60, ses % 60, p1, p2); side2->setText(b);
     const char * v = avgPct < 1 ? "Far below the FCC general-public limit." :
@@ -1020,17 +1045,19 @@ public:
     verdict->setText(b);
     verdict->labelStyle().textColor = sesOverload || avgPct >= 50 ? RF_RED : avgPct < 10 ? RF_GREEN : T.text;
     double strongS = strongCh >= 0 ? rf::powerDensity(data.band[strongCh], rf::gSettings.antGainDbi, rf::chFreq(strongCh)) : 0;
-    snprintf(b, sizeof(b), "Strongest: %.1f MHz at %.0f dBm (%.0f%% of what you get).  Now %.2e mW/cm2 = %.3f uW/cm2, about %.2f V/m.  Noise %.0f dBm.",
-             strongCh >= 0 ? rf::chFreq(strongCh) : 0.0f, strongCh >= 0 ? data.band[strongCh] : -130.0f, S > 0 ? strongS / S * 100 : 0, S, S * 1000, sqrt(S * 10 * 377), nf);
+    expoFmtPct(p1, sizeof(p1), pct);
+    snprintf(b, sizeof(b), "Strongest: %.1f MHz at %.0f dBm (%.0f%% of what you get).  Now %s = %.2e uW/cm2, %.3f V/m.  Noise %.0f dBm.",
+             strongCh >= 0 ? rf::chFreq(strongCh) : 0.0f, strongCh >= 0 ? data.band[strongCh] : -130.0f, S > 0 ? strongS / S * 100 : 0, p1, S * 1000, sqrt(S * 10 * 377), nf);
     st1->setText(b);
     snprintf(b, sizeof(b), "Antenna %.1f dBi, attenuator %.0f dB, front end %.0f dB (set in RF Sweep). Limit at 915 MHz: %.2f mW/cm2 public, %.2f occupational.",
              rf::gSettings.antGainDbi, rf::gSettings.attenDb, rf::gSettings.frontEndDb, lim, rf::fccOccupational(915));
     st2->setText(b);
     if (logF) {
       time_t t = time(nullptr); struct tm tmv; localtime_r(&t, &tmv); char ts[24]; strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", &tmv);
-      fprintf(logF, "%s,%u,%.4e,%.5f,%.5f,%.1f,%.1f,%.1f,%d\n", ts, ses, S, pct, avgPct,
+      fprintf(logF, "%s,%u,%.4e,%.4e,%.4e,%.1f,%.1f,%.1f,%d\n", ts, ses, S, pct, avgPct,
               strongCh >= 0 ? rf::chFreq(strongCh) : 0.0f, strongCh >= 0 ? data.band[strongCh] : -130.0f, nf, over ? 1 : 0);
-      if (++logLines % 10 == 0) fflush(logF);
+      fflush(logF);                                // every line: a copy taken while it logs still has everything
+      if (++logLines % 5 == 0) fsync(fileno(logF));
     }
     big->repaint(); side1->repaint(); side2->repaint(); verdict->repaint(); st1->repaint(); st2->repaint();
     chart->repaint(); bandV->repaint();
