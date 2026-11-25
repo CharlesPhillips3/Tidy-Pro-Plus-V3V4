@@ -2,7 +2,7 @@
 
 # Tidy Pro Plus for the Heltec V3 and V4
 
-**Install: https://hardwaremack-prog.github.io/Tidy-Pro-Plus/** (Chrome or Edge, USB data cable)
+**Install: https://charlesphillips3.github.io/Tidy-Pro-Plus-V3V4/** (Chrome or Edge, USB data cable)
 
 This is [Tidy Pro Plus](https://github.com/hardwaremack-prog/Tidy-Pro-Plus) with the **Heltec WiFi LoRa 32 V3** added
 next to the V4 and V4-R8. Pick the board at the top of the flasher.
