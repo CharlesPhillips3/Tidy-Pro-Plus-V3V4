@@ -13,6 +13,14 @@ next to the V4 and V4-R8. Pick the board at the top of the flasher.
 | Heltec V4 | 16 MB / 2 MB | TidyOS Pro + The Shelf (dual boot), or either one | 7.4 MB (12.4 MB TidyOS Pro only) |
 | Heltec V4-R8 | 16 MB / 8 MB | the same as the V4 | the same |
 
+### 3.4.38: the desktop page on phones
+
+* **Pinch to zoom** the desktop with two fingers, and drag it around with two fingers. One finger is still the mouse
+  (a press waits 80 ms, so the first finger of a pinch doesn't click). When you let go, the page redraws it at the new
+  size with hard pixels, so text stays sharp. **Fit** (bottom right) or pinching back out goes back to the whole screen.
+* **The top bar fits a phone:** smaller buttons, the speed / uptime text hidden on narrow screens, and it scrolls
+  sideways if it's still too wide. Safari's own page zoom is off; it was what made the bar (and everything) fuzzy.
+
 ### 3.4.37: more room and a faster sweep for the RF tools
 
 * **Left out to make room for the RF tools:** Browser, Pictures, HTML Games and HTML Programs (about 30 KB of the
