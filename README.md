@@ -13,6 +13,16 @@ next to the V4 and V4-R8. Pick the board at the top of the flasher.
 | Heltec V4 | 16 MB / 2 MB | TidyOS Pro + The Shelf (dual boot), or either one | 7.4 MB (12.4 MB TidyOS Pro only) |
 | Heltec V4-R8 | 16 MB / 8 MB | the same as the V4 | the same |
 
+### 3.4.36: get files off the board in a web browser
+
+* **`http://<board>/files`** (on the hotspot: **http://10.1.1.250/files**), or the new **Files** button on the TidyOS
+  desktop page, opens the file page for the **SD card** and the **board's storage**. It starts the file page for now
+  (it stops after 10 idle minutes) even when Wi-Fi sharing is off in Settings.
+* On the file page: **tick boxes**, **Download ticked** (one file as itself, several or folders as one ZIP) and
+  **Download this folder (ZIP)**, subfolders included. Click a file's name to download just that one. Upload, new
+  folder, rename and delete are as before.
+* Over Wi-Fi this is far quicker than the USB file copy in the flasher (which also got Save ticked / Save folder).
+
 ### 3.4.35: RF Exposure, made for a room full of meters
 
 * **A live reading:** big *Now x% of the limit* (the last second), the **FCC 30-minute average**, and the average and

@@ -69,7 +69,7 @@ canvas{background:#00aaaa;touch-action:none;outline:none;cursor:default}
 #msg{position:absolute;top:36px;left:0;right:0;bottom:0;display:flex;flex-direction:column;gap:14px;align-items:center;justify-content:center;background:rgba(0,0,0,.65);font-size:18px;text-align:center;white-space:pre-line;padding:0 16px}
 @media(max-width:560px){#bt,#bf{display:none}}
 </style></head><body>
-<div id="bar"><b>TidyOS <span style="background:#ffd84d;color:#0055aa;border-radius:4px;padding:1px 6px;font-size:12px;vertical-align:2px">PRO</span></b><button id="bk">Keyboard</button><button id="bt">Task Manager</button><button id="br">Restart</button><button id="bs" style="background:#202a44;color:#fff" title="Deep sleep: almost no power. PRG wakes it.">&#9790; Deep Sleep</button><button id="bf">Full screen</button><button id="bz">Size: fit</button><span id="st">Connecting...</span></div>
+<div id="bar"><b>TidyOS <span style="background:#ffd84d;color:#0055aa;border-radius:4px;padding:1px 6px;font-size:12px;vertical-align:2px">PRO</span></b><button id="bk">Keyboard</button><button id="bt">Task Manager</button><button id="bfi" title="The SD card and the board's storage: download and upload files" onclick="open('/files','_blank')">&#128193; Files</button><button id="br">Restart</button><button id="bs" style="background:#202a44;color:#fff" title="Deep sleep: almost no power. PRG wakes it.">&#9790; Deep Sleep</button><button id="bf">Full screen</button><button id="bz">Size: fit</button><span id="st">Connecting...</span></div>
 <div id="home"></div><div id="iv" onclick="this.style.display='none'" style="display:none;position:fixed;inset:0;z-index:9;background:#000d;align-items:center;justify-content:center;cursor:zoom-out"><img style="max-width:96vw;max-height:94vh"></div><div id="wrap"><canvas id="c" width="640" height="480" tabindex="0"></canvas></div>
 <input id="kb" autocapitalize="off" autocomplete="off" autocorrect="off" spellcheck="false">
 <div id="msg"><div id="mt">Connecting to TidyOS Pro...</div><button id="mb" style="display:none">Use it here</button></div>
@@ -886,6 +886,14 @@ static void handleHttp(WiFiClient c, const std::string & req)
     if (*ok) c.print(ok);
   } else if (p == "/favicon.ico") {
     c.print("HTTP/1.0 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+  } else if (p == "/files" || p == "/files/") {
+    // the file page (SD card + the board's storage, port 8081): start it for now (it stops by itself after 10 idle
+    // minutes unless Wi-Fi sharing is on in Settings) and send the browser there, on the address it used to reach us
+    fileServerMediaReady();
+    char r[200];
+    snprintf(r, sizeof(r), "HTTP/1.0 302 Found\r\nLocation: http://%s:%d/\r\nCache-Control: no-cache\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+             c.localIP().toString().c_str(), fileServerPort());
+    c.print(r);
   } else if (p != "/" && p != "/index.html") {
     // phones' "is there internet?" checks and anything else: a tiny redirect to the desktop
     // (makes the phone offer to open it, without sending the whole page to every check)
