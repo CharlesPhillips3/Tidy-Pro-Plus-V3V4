@@ -26,7 +26,13 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.29. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.30. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.30: media controls, NEWS button, tidier music buttons
+
+* Songs playing in the browser show their name (and artist, from "Artist - Title" names) on the phone's lock screen / notification player and a computer's media controls, and play, pause, stop and next work there. TidyOS keeps up when you pause or play from there.
+* The NEWS tag is a button: click it to run the headlines the other way (the arrow shows which way).
+* The music buttons sit evenly spaced between the clock and the drop box, slightly bigger and rounder.
 
 ### The Shelf 1.19.7 (dual boot): less memory for the Music list, faster Opus tags
 

@@ -739,6 +739,7 @@ std::string musicQuickToggle(bool midi);   // media_apps.h: the panel's MP3 and 
 std::string musicQuickVol(int d);
 std::string musicQuickNext();
 void musicQuickTick();
+extern volatile bool gMusicNextReq;   // screen.cpp
 #ifdef TIDYOS_PRO
 // a window (other than the desktop itself) is over the news line
 static bool tickerCovered()
@@ -788,6 +789,11 @@ public:
 #ifdef TIDYOS_HTML5
           if (!showingHint()) {                                     // the panel's music buttons: MP3, volume - / +
             auto in = [&](const Rect & q) { return q.X2 > q.X1 && mx >= q.X1 && mx <= q.X2 && my >= q.Y1 && my <= q.Y2; };
+            if (in(s_newsTag)) {                                     // the NEWS button: headlines the other way
+              s_newsRev = !s_newsRev;
+              repaint(newsTickerRect());
+              break;
+            }
             int what = in(s_mp3Btn) ? 0 : in(s_volDnBtn) ? 1 : in(s_volUpBtn) ? 2 : in(s_nextBtn) ? 3 : -1;
             if (what >= 0) {
               std::string m = what == 0 ? musicQuickToggle(false) : what == 3 ? musicQuickNext() : musicQuickVol(what == 1 ? -1 : 1);
@@ -847,6 +853,11 @@ public:
         alarmTick();                                // Clock alarm + Print Screen
         deskDropTick();                             // files dropped on the page: where do they go?
 #ifdef TIDYOS_HTML5
+        if (gMusicNextReq) {                        // Next from the phone's lock screen / the computer's media keys
+          gMusicNextReq = false;
+          std::string m = musicQuickNext();
+          if (m.rfind("Music: ", 0) == 0) { deskNote("Playing", m.substr(7)); repaint(deskPanelRect()); }
+        }
         if (m_tick % 10 == 0) musicQuickTick();     // the panel's MP3: on to the next song when one ends
 #endif
 #ifdef TIDYOS_HTML5                                 // (the monitor edition has no IRAM to spare for sleep code)

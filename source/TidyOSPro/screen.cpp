@@ -155,7 +155,20 @@ function alarmBanner(on){var e=document.getElementById('alm');if(!e){e=document.
 function unlockSound(){if(!bA){try{bA=new Audio(beepWav());bA.volume=0;bA.play().then(function(){bA.pause();bA.volume=1;}).catch(function(){bA.volume=1;});}catch(e){}}}
 function mUrl(p){return location.protocol+'//'+location.hostname+':'+MP+p;}
 function blog(t){try{send([21].concat(Array.from(new TextEncoder().encode(String(t).slice(0,200)))));}catch(e){}}
-function auReport(){if(!au)return;var t=au.currentTime|0,u=isFinite(au.duration)?au.duration|0:0;send([8,au.ended?2:au.paused?0:1,t&255,t>>8&255,u&255,u>>8&255]);}
+function auReport(){if(!au)return;var t=au.currentTime|0,u=isFinite(au.duration)?au.duration|0:0;send([8,au.ended?2:au.paused?0:1,t&255,t>>8&255,u&255,u>>8&255]);
+ if('mediaSession' in navigator)try{navigator.mediaSession.playbackState=au.paused?'paused':'playing';}catch(e){}}
+// the phone's lock screen / notification player and a computer's media keys: the song's name, and
+// play, pause, stop and next work there too (next goes to TidyOS, which picks the song)
+function auMeta(v){if(!('mediaSession' in navigator))return;try{
+ var n=decodeURIComponent((v.split('path=')[1]||v).split('&')[0]).split('/').pop().replace(/\.[^.]+$/,''),a='TidyOS Pro',t=n,i=n.indexOf(' - ');
+ if(i>0){a=n.slice(0,i);t=n.slice(i+3);}
+ navigator.mediaSession.metadata=new MediaMetadata({title:t,artist:a,album:'TidyOS Pro'});
+ if(auMeta.set)return;auMeta.set=1;var ms=navigator.mediaSession,h=function(k,f){try{ms.setActionHandler(k,f);}catch(e){}};
+ h('play',function(){if(au)au.play().then(auReport).catch(function(){});});
+ h('pause',function(){if(au){au.pause();auReport();}});
+ h('stop',function(){if(au){au.pause();auReport();}});
+ h('nexttrack',function(){send([25]);});
+ h('previoustrack',function(){if(au){au.currentTime=0;auReport();}});}catch(e){}}
 var midiCur=null;
 function midiParse(d){var p=0,u16=function(){var v=d[p]<<8|d[p+1];p+=2;return v;},u32=function(){var v=(d[p]<<24|d[p+1]<<16|d[p+2]<<8|d[p+3])>>>0;p+=4;return v;},
  vlq=function(){var v=0,b;do{b=d[p++];v=v*128+(b&127);}while(b&128&&p<d.length);return v;};
@@ -502,7 +515,7 @@ function media(t){var k=t.charAt(0),v=t.substr(2),iv=document.getElementById('iv
   else{dropQ=[];note('TidyOS has nowhere to keep files right now (no SD card and no board storage).',6000);}return;}
  if(k=='a'){midiStop();if(!au){au=new Audio();au.onended=auReport;setInterval(auReport,1000);
    au.onerror=function(){blog('audio: error '+(au.error?au.error.code+' '+(au.error.message||''):'?')+', try '+au.tries);if(au.tries++<4&&au.getAttribute('src'))setTimeout(function(){au.load();au.play().catch(function(){auBlocked=true;});},1500);};}
-  au.tries=0;au.src=mUrl(v);blog('audio: play '+v);au.play().catch(function(e){blog('audio: play() refused: '+(e&&e.name)+' '+(e&&e.message));if(e&&e.name=='NotAllowedError')auBlocked=true;});}
+  au.tries=0;au.src=mUrl(v);auMeta(v);blog('audio: play '+v);au.play().catch(function(e){blog('audio: play() refused: '+(e&&e.name)+' '+(e&&e.message));if(e&&e.name=='NotAllowedError')auBlocked=true;});}
  else if(k=='p'&&au)au.pause();else if(k=='r'&&au)au.play().catch(function(){auBlocked=true;});
  else if(k=='s'&&au){au.pause();au.removeAttribute('src');au.load();send([8,255,0,0,0,0]);}
  else if(k=='v'&&au)au.volume=Math.max(0,Math.min(1,+v));else if(k=='k'&&au)au.currentTime=+v;
@@ -717,6 +730,8 @@ static volatile bool s_rlOn = false;
 static volatile int  s_rlStatus = -1, s_rlEnd = 0;
 static volatile uint32_t s_rlTotal = 0;
 
+volatile bool gMusicNextReq = false;     // the page's media controls asked for the next song
+
 static bool pollInput(WiFiClient & c)
 {
   while (c.available() >= 2) {
@@ -751,6 +766,7 @@ static bool pollInput(WiFiClient & c)
       case 17: { p[keep < sizeof(p) ? keep : sizeof(p) - 1] = 0; deskTempsFromPage((const char *)p + 1); break; } // temperatures, last 4 days
       case 19: { p[keep < sizeof(p) ? keep : sizeof(p) - 1] = 0; deskFieldFromPage((const char *)p + 1); break; } // TidyOS Pro field conditions
       case 14: { p[keep < sizeof(p) ? keep : sizeof(p) - 1] = 0; deskNewsFromPage((const char *)p + 1); break; } // news headlines
+      case 25: gMusicNextReq = true; break;                    // Next from the phone's or computer's media controls
       case 22:                                                  // a piece of a file the page fetched for us
         if (s_rlOn && s_rlBuf) {
           size_t off = 1;

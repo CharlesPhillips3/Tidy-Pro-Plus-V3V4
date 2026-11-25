@@ -596,6 +596,11 @@ void musicQuickTick()             // once a second: on to the next song when one
   static uint32_t lastTick = 0;     // (a game and the desktop both call this: once a second is enough)
   if (millis() - lastTick < 800) return;
   lastTick = millis();
+  if (!MusicApp::inst && !s_qPlaying.empty() && s_qEpoch == screenMediaEpoch() && millis() - s_qAt > 5000) {   // paused or played from the phone's / computer's own controls
+    int st0, p0, d0; screenMediaState(st0, p0, d0);
+    if (st0 == 0 && !s_qPaused) s_qPaused = true;
+    else if (st0 == 1 && s_qPaused) s_qPaused = false;
+  }
   if (MusicApp::inst || s_qPlaying.empty() || s_qPaused) return;
   int st, pos, dur;
   screenMediaState(st, pos, dur);

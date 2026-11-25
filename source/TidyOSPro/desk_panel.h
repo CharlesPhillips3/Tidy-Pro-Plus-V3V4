@@ -565,6 +565,8 @@ static int drawFieldPanel(Canvas * cv, Rect r, int x, int y)
 // timer moves them on and repaints just this strip, so the rest of the panel isn't redrawn.
 struct Ticker { int pos = 0, px = 0; };              // the letter at the left edge, and how far it has slid out
 static Ticker s_tick[2];
+static bool s_newsRev = false;                       // the NEWS button: headlines run the other way
+static Rect s_newsTag;
 static Rect newsTickerRect() { Rect r = deskPanelRect(); return Rect(r.X1 + 1, r.Y2 - 142, r.X2 - 1, r.Y2 - 127); }
 static std::string newsTickerText(int line)
 {
@@ -580,7 +582,7 @@ static void drawNewsTicker(Canvas * cv)
   cv->setBrushColor(T.win);
   cv->fillRectangle(k.X1, k.Y1, k.X2, k.Y2);
   if (!s_newsCount) return;
-  const char * tag = "NEWS";
+  const char * tag = s_newsRev ? "NEWS >" : "< NEWS";     // a button: click it to run the headlines the other way
   int x0 = k.X1 + 9, tw = cv->textExtent(f, tag), xs = x0 + tw + 8, xe = k.X2 - 8;
   for (int line = 0; line < 2; ++line) {
     std::string t = newsTickerText(line);
@@ -601,6 +603,7 @@ static void drawNewsTicker(Canvas * cv)
   cv->fillRectangle(xe + 1, k.Y1, k.X2, k.Y2);
   cv->setBrushColor(T.accent); cv->setPenColor(T.win);        // the NEWS tag
   cv->fillRectangle(x0 - 3, k.Y1 + 1, x0 + tw + 2, k.Y2 - 1);
+  s_newsTag = Rect(x0 - 3, k.Y1, x0 + tw + 2, k.Y2);
   cv->drawText(f, x0, k.Y1 + (k.height() - (int)f->height) / 2, tag);
   cv->setBrushColor(T.win); cv->setPenColor(T.text);
 }
@@ -613,6 +616,15 @@ static void newsTickerStep(Canvas * cv)
     if (!n) continue;
     Ticker & tk = s_tick[line];
     if (tk.pos >= n) tk.pos = 0;
+    if (s_newsRev) {                                          // backwards: the text slides right, letters come in on the left
+      tk.px -= 2;
+      while (tk.px < 0) {
+        tk.pos = (tk.pos + n - 1) % n;
+        char c[2] = { t[tk.pos], 0 };
+        tk.px += cv->textExtent(f, c);
+      }
+      continue;
+    }
     tk.px += 2;                                               // 2 px every 100 ms: about 20 px a second
     for (;;) {
       char c[2] = { t[tk.pos], 0 };
@@ -654,10 +666,10 @@ static void drawDeskPanel(Canvas * cv)
 #ifdef TIDYOS_HTML5
   {                                                          // MP3, volume - / +, next: evenly between the time and the drop box
     int left = x + clockW, right = r.X2 - 92;               // the space between the time and the drop box
-    const int D = 16, mw = 28, g = 3, by = r.Y1 + 11;        // round buttons (MP3 a pill), 16 px tall
-    int total = mw + 3 * D + 3 * g;
-    int gap = imax(2, (right - left - total) / 2);           // the same space each side
-    int bx = left + gap;
+    const int D = 17, mw = 29, by = r.Y1 + 10;               // round buttons (MP3 a pill), 17 px: an odd size draws a round circle
+    // the same space everywhere: time | MP3 | - | + | N | drop box
+    int g = imax(2, (right - left - (mw + 3 * D)) / 5);
+    int bx = left + g + imax(0, (right - left - (mw + 3 * D) - 5 * g) / 2);
     s_mp3Btn    = Rect(bx, by, bx + mw - 1, by + D - 1);
     s_volDnBtn  = Rect(s_mp3Btn.X2 + 1 + g, by, s_mp3Btn.X2 + g + D, by + D - 1);
     s_volUpBtn  = Rect(s_volDnBtn.X2 + 1 + g, by, s_volDnBtn.X2 + g + D, by + D - 1);
