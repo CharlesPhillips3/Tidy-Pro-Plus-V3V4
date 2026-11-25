@@ -534,6 +534,11 @@ static void oledProgress(const char * title, const char * msg, int pct)
   s_oled.sendBuffer();
 }
 
+void oledOff()            // switched off: the panel dark (it may still show the start-up progress)
+{
+  if (s_statusInit) { s_oled.setPowerSave(1); s_pagesOn = true; }   // (and no more start-up progress on it)
+}
+
 void oledBegin()
 {
 #if CONFIG_SPIRAM_MODE_OCT
@@ -553,4 +558,5 @@ void oledBegin()
 void oledBegin() {}
 void oledStatus(const char *, int) {}
 void oledBoot(const char *, int) {}
+void oledOff() {}
 #endif

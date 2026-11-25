@@ -59,6 +59,7 @@ struct Settings {
   bool   ledOn;       // blue status light on (off by default)
   bool shelfOn = false;   // Shelf messages over Wi-Fi (start-up switch)
   bool gpsOn = true;      // look for a GPS module on 39-42 at start-up (start-up switch)
+  bool oledOn = true;     // the board's own OLED screen (a V3 can switch it off at start-up to save ~10 KB)
   bool oledSleep = true;  // the board's OLED goes off after 5 minutes without a button press
   bool tidyBands = false; // Tidy: shade every other row
   bool hotspot = false;   // keep the TidyOS hotspot running (devices join TidyOS directly)

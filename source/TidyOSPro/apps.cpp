@@ -3610,7 +3610,11 @@ public:
   uiLabel  * sdInfo, * mem;
 
   SwitchesApp() : AppFrame("Switches", Point(110, 14), Size(420, 440), &inst) {
+#ifdef TIDYOS_V3
+    static const char * names[5] = { "SD card", "Wireless mesh", "Status light", "OLED screen", "OLED sleep" };   // (a V3 has no GPS header)
+#else
     static const char * names[5] = { "SD card", "Wireless mesh", "Status light", "GPS module", "OLED sleep" };
+#endif
     for (int i = 0; i < 5; ++i) {
       int y = cy + 4 + i * 74;
       auto l = label(names[i], cx + 4, y + 8, 150, 24);
@@ -3655,7 +3659,11 @@ public:
       settingsSave();
       ledSetOn(gSet.ledOn);
     } else if (i == 3) {
+#ifdef TIDYOS_V3
+      gSet.oledOn = !gSet.oledOn;
+#else
       gSet.gpsOn = !gSet.gpsOn;
+#endif
       settingsSave();
     } else {
       gSet.oledSleep = !gSet.oledSleep;
@@ -3690,9 +3698,14 @@ public:
     else set(note[1], gSet.meshOn ? (rf::radioOk() && gSet.mesh900 ? "Talking with Coms boards nearby (2.4 GHz + 900 MHz LoRa)." : "Talking with Coms boards nearby (2.4 GHz). Uses a few KB.") : "Off: no Coms mesh. Shelf messages on Wi-Fi still work.");
     show(2, gSet.ledOn, "ON", "OFF");
     set(note[2], gSet.ledOn ? "Breathing = ready, flicker = SD card busy. Uses ~2 KB." : "Off: the white LED stays dark. Saves ~2 KB.");
+#ifdef TIDYOS_V3
+    show(3, gSet.oledOn, "ON", "OFF");
+    set(note[3], gSet.oledOn ? "The board's own screen. Off saves ~10 KB (next start)." : "Off: the board's screen stays dark, ~10 KB saved (next start).");
+#else
     show(3, gSet.gpsOn, "ON", "OFF");
     set(note[3], !gSet.gpsOn ? "Off: no GPS search at start-up. Takes effect next start." :
                  rf::gnssRunning() ? "GPS found on the header." : "No GPS found at start-up (or the SD card uses its pins).");
+#endif
     show(4, gSet.oledSleep, "ON", "OFF");
     set(note[4], gSet.oledSleep ? "The board's screen goes off after 5 min (not while music plays). PRG wakes it." : "Off: the board's screen stays on (dims after 30 min).");
     char b[80];

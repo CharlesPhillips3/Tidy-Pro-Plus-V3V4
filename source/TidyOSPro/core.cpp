@@ -68,6 +68,7 @@ void settingsLoad()
   gSet.shelfOn   = s_prefs.getBool("shelf", false);
   gSet.gpsOn     = s_prefs.getBool("gps", true);
   gSet.oledSleep = s_prefs.getBool("oledslp", true);
+  gSet.oledOn    = s_prefs.getBool("oledon", true);
   gSet.tidyBands = s_prefs.getBool("tbands", false);
   gSet.tidyFreeze = s_prefs.getBool("tfreeze", false);
   gSet.hotspot = s_prefs.getBool("hotspot", false);
@@ -105,6 +106,7 @@ void settingsSave()
   s_prefs.putBool("shelf", gSet.shelfOn);
   s_prefs.putBool("gps", gSet.gpsOn);
   s_prefs.putBool("oledslp", gSet.oledSleep);
+  s_prefs.putBool("oledon", gSet.oledOn);
   s_prefs.putBool("tbands", gSet.tidyBands);
   s_prefs.putBool("tfreeze", gSet.tidyFreeze);
   s_prefs.putBool("hotspot", gSet.hotspot);
@@ -736,6 +738,7 @@ static std::string s_bootNote;              // shown once on the desktop (update
 
 #include "rf_engine.h"
 void oledBegin();   // oled.cpp
+void oledOff();
 #include "desk_panel.h"
 std::string musicQuickToggle(bool midi);   // media_apps.h: the panel's MP3 and volume buttons
 std::string musicQuickVol(int d);
@@ -1773,6 +1776,17 @@ static void bootScreenRow(Canvas & cv)
           c != 4, c == 8 ? "8 col" : c == 2 ? "B&W" : "4 col");
 }
 
+// the sixth start-up switch: the GPS search on a V4, the board's OLED screen on a V3 (no GPS header there, and
+// every KB counts without PSRAM)
+static void bootRow6(Canvas & cv)
+{
+#ifdef TIDYOS_V3
+  bootRow(cv, 5, "OLED screen", "~10 KB. Off: the board's own screen stays dark", gSet.oledOn);
+#else
+  bootRow(cv, 5, "GPS module", "Off: no GPS search (pins 39-42 left alone)", gSet.gpsOn);
+#endif
+}
+
 static void bootDraw(Canvas & cv)
 {
   cv.setBrushColor(T.desk);
@@ -1793,7 +1807,7 @@ static void bootDraw(Canvas & cv)
   bootScreenRow(cv);
   bootRow(cv, 4, "Shelf messages", "~9 KB. Chat with your Shelves on Wi-Fi", gSet.shelfOn);
 #ifdef TIDYOS_V4
-  bootRow(cv, 5, "GPS module", "Off: no GPS search (pins 39-42 left alone)", gSet.gpsOn);
+  bootRow6(cv);
 #endif
   // Boot button, and Update next to it
   int bx = BW_X + BW_W / 2 - 80, by = BW_Y + BW_H - 70;
@@ -1874,10 +1888,15 @@ static void bootChooser()
       toggled = -1;
     }
     if (toggled == 5) {
-#ifdef TIDYOS_V4
+#ifdef TIDYOS_V3
+      gSet.oledOn = !gSet.oledOn;
+      settingsSave();
+      bootRow6(cv);
+      shown = -2;
+#elif defined(TIDYOS_V4)
       gSet.gpsOn = !gSet.gpsOn;
       settingsSave();
-      bootRow(cv, 5, "GPS module", "Off: no GPS search (pins 39-42 left alone)", gSet.gpsOn);
+      bootRow6(cv);
       shown = -2;
 #endif
       toggled = -1;
@@ -1923,7 +1942,7 @@ static void bootChooser()
     delay(600);
     ESP.restart();
   }
-  Serial.printf("[TidyOS] start-up switches: SD %s, mesh %s, light %s, shelf %s, GPS %s, colours %d\n", gSet.sdOn ? "on" : "off", gSet.meshOn ? "on" : "off", gSet.ledOn ? "on" : "off", gSet.shelfOn ? "on" : "off", gSet.gpsOn ? "on" : "off", gSet.colors);
+  Serial.printf("[TidyOS] start-up switches: SD %s, mesh %s, light %s, shelf %s, GPS %s, OLED %s, colours %d\n", gSet.sdOn ? "on" : "off", gSet.meshOn ? "on" : "off", gSet.ledOn ? "on" : "off", gSet.shelfOn ? "on" : "off", gSet.gpsOn ? "on" : "off", gSet.oledOn ? "on" : "off", gSet.colors);
 }
 #endif
 
@@ -2053,7 +2072,9 @@ void setup()
 
   settingsLoad();
   chooseDeskApps();       // which apps go on the desktop (picked in the web flasher)
+#ifndef TIDYOS_V3                       // (a log line for developers: a V3 can't spare the 3 KB)
   xTaskCreatePinnedToCore(stackWatchTask, "stackwatch", 3072, nullptr, 1, nullptr, 1);
+#endif
   ledSetOn(gSet.ledOn);   // ledBegin ran before the settings were read, so the switch looked "off" to it
 
   bool updMode = updateModeRequested();
@@ -2124,7 +2145,8 @@ void setup()
   rf::begin();
 #endif
   rf::gnssStart();
-  oledBegin();          // the board's own screen: where to find the desktop
+  if (gSet.oledOn) oledBegin();   // the board's own screen: where to find the desktop
+  else oledOff();                 // (switched off at start-up: dark, and no task or memory for it)
   memLog("radio + GNSS");
 #endif
   splash("Loading the dictionary", 50);

@@ -77,7 +77,13 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.33. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.34. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.34: V3 memory switches
+
+* On a V3 the sixth start-up switch (and Switches' fourth row) is the **OLED screen** instead of the GPS (a V3 has no GPS header): off, the board's own screen stays dark and its task and memory (~10 KB) are never set up. Holding PRG to forget Wi-Fi needs the OLED on.
+* The V3 no longer runs the developer stack-size logger (3 KB).
+* The other memory switches work on every board as before: SD card, wireless mesh, status light, Shelf messages and screen colours (a V3 starts in black & white).
 
 ### 3.4.33: V3 starts in black & white
 
