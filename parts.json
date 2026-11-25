@@ -22,16 +22,16 @@
       "tidyos": {
         "path": "firmware/tidyos-pro-v4.bin",
         "offset": 524288,
-        "size": 2822048,
+        "size": 2829264,
         "slot": 3145728,
-        "appList": 1419508
+        "appList": 1420596
       },
       "tidyosFull": {
         "path": "firmware/tidyos-pro-v4-full.bin",
         "offset": 524288,
-        "size": 3106960,
+        "size": 3112624,
         "slot": 3145728,
-        "appList": 1595692
+        "appList": 1596784
       },
       "shelf": {
         "path": "firmware/parts/v4/shelf.bin",
@@ -67,16 +67,16 @@
       "tidyos": {
         "path": "firmware/tidyos-pro-v4-r8.bin",
         "offset": 524288,
-        "size": 2822288,
+        "size": 2829616,
         "slot": 3145728,
-        "appList": 1419372
+        "appList": 1420460
       },
       "tidyosFull": {
         "path": "firmware/tidyos-pro-v4-r8-full.bin",
         "offset": 524288,
-        "size": 3107216,
+        "size": 3112912,
         "slot": 3145728,
-        "appList": 1595556
+        "appList": 1596648
       },
       "shelf": {
         "path": "firmware/parts/v4-r8/shelf.bin",
@@ -107,16 +107,16 @@
       "tidyos": {
         "path": "firmware/tidyos-pro-v3.bin",
         "offset": 524288,
-        "size": 2812848,
+        "size": 2820208,
         "slot": 3145728,
-        "appList": 1417944
+        "appList": 1419032
       },
       "tidyosFull": {
         "path": "firmware/tidyos-pro-v3-full.bin",
         "offset": 524288,
-        "size": 3097696,
+        "size": 3103504,
         "slot": 3145728,
-        "appList": 1594136
+        "appList": 1595228
       }
     }
   },
@@ -346,7 +346,7 @@
       "kb": 1
     }
   ],
-  "version": "3.4.34",
+  "version": "3.4.35",
   "shelfVersion": "1.20.0",
   "built": "2026-11-25"
 }

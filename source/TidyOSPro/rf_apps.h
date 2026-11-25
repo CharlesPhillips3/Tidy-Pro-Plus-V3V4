@@ -728,49 +728,343 @@ AppFrame * SiteSurveyApp::inst = nullptr;
 void openSiteSurvey() { if (!SiteSurveyApp::inst) new SiteSurveyApp(); SiteSurveyApp::inst->open(); }
 
 // ====================================================================== RF Exposure
+// Made for standing in a room full of meters: a live reading of how much 902-928 MHz power is around you,
+// as a share of the FCC limit, a graph of it over the last minutes, the band as bars (which channels it
+// comes from), the FCC's 30-minute average, and a CSV log you can keep running (minimised too).
+//
+// Every second it takes the sweep's running sums (rf::gSpec->linSum / samples) and works out each channel's
+// average power over just that second, so nothing between two screen updates is missed. The channels' power
+// densities are added up (each 200 kHz channel's time-average, summed = the band's time-average).
+// It's an estimate - see the notes at the top of this file.
+
+static void expoFmtPct(char * b, size_t n, double pct)
+{
+  if (pct >= 10)       snprintf(b, n, "%.0f%%", pct);
+  else if (pct >= 1)   snprintf(b, n, "%.1f%%", pct);
+  else if (pct >= 0.1) snprintf(b, n, "%.2f%%", pct);
+  else if (pct >= 0.001) snprintf(b, n, "%.4f%%", pct);
+  else                 snprintf(b, n, "%.1e%%", pct);
+}
+
+struct ExpoData {
+  static const int HIST = 1800;      // 30 min of 1-second points
+  uint8_t now[HIST], avg[HIST];      // log-coded share of the limit (expoCode), 0 = no reading
+  int head = 0, filled = 0;
+  float band[rf::NCH];               // dBm per channel over the last second
+  float noise = -120;
+  int strongCh = -1;
+};
+// share of the FCC public limit (%) as one byte: half-dB steps from 1e-6 % (code 1) up to 100 % (code 161)
+static uint8_t expoCode(double pct) { if (pct <= 0) return 0; double v = (10 * log10(pct) + 60) * 2 + 1; return v < 1 ? 1 : v > 255 ? 255 : (uint8_t)v; }
+static double  expoPct(uint8_t c)   { return c ? pow(10.0, ((c - 1) / 2.0 - 60) / 10.0) : 0; }
+
+// exposure over time: blue bars = each second, black line = the 30-minute average, red line = the limit
+class ExpoChart : public uiControl {
+public:
+  ExpoData * d; int spanS = 600;
+  ExpoChart(uiWindow * p, Point pos, Size sz, ExpoData * data) : uiControl(p, pos, sz, true, 0), d(data) {
+    windowStyle().borderSize = 1; windowStyle().borderColor = T.shadow; windowStyle().activeBorderColor = T.shadow; setFocusIndex(-1);
+  }
+  void processEvent(uiEvent * e) override {
+    uiControl::processEvent(e);
+    if (e->id != UIEVT_PAINT) return;
+    Rect r = clientRect(uiOrigin::Window);
+    beginPaint(e, r);
+    auto cv = canvas();
+    cv->setBrushColor(T.win); cv->fillRectangle(r.X1, r.Y1, r.X2, r.Y2);
+    int gx = r.X1 + 52, gw = r.width() - 56, gy = r.Y1 + 4, gh = r.height() - 20;
+    // y: 0.00001 % (bottom) .. 1000 % (top), log
+    const double lo = -5, hi = 3;
+    auto Y = [&](double pct) { double v = pct > 0 ? (log10(pct) - lo) / (hi - lo) : 0; v = v < 0 ? 0 : v > 1 ? 1 : v; return gy + gh - 1 - (int)(v * (gh - 1)); };
+    static const char * lab[] = { "0.0001%", "0.01%", "1%", "100%" };
+    for (int k = 0; k < 4; ++k) {
+      double p = pow(10.0, -4 + 2 * k); int y = Y(p);
+      cv->setPenColor(k == 3 ? RF_RED : T.face); cv->drawLine(gx, y, gx + gw - 1, y);
+      cv->setPenColor(k == 3 ? RF_RED : T.text); cv->setBrushColor(T.win); cv->drawText(&FONT_std_12, r.X1 + 2, y - 6, lab[k]);
+    }
+    cv->setPenColor(RF_RED); cv->setBrushColor(T.win);
+    cv->drawText(&FONT_std_12, gx + 4, Y(100) - 14, "FCC general-public limit");
+    // time axis
+    cv->setPenColor(T.text);
+    char b[24];
+    int ly = gy + gh + 2;
+    for (int k = 0; k <= 4; ++k) {
+      int x = gx + k * (gw - 1) / 4, s = spanS - k * spanS / 4;
+      if (k == 4) snprintf(b, sizeof(b), "now"); else if (spanS >= 120) snprintf(b, sizeof(b), "-%d min", s / 60); else snprintf(b, sizeof(b), "-%d s", s);
+      cv->drawText(&FONT_std_12, k == 4 ? x - 20 : k == 0 ? x : x - 18, ly, b);
+    }
+    if (!d->filled) { cv->drawText(&FONT_std_12, gx + gw / 2 - 90, gy + gh / 2, "Waiting for the first readings..."); return; }
+    // one column per pixel: the highest second in it (bar), the 30-min average (line)
+    int n = imin(d->filled, spanS);
+    int px = -1, py = 0;
+    for (int x = 0; x < gw; ++x) {
+      int a = spanS - 1 - (int)((long)x * spanS / gw), bEnd = spanS - 1 - (int)((long)(x + 1) * spanS / gw);   // seconds ago
+      if (bEnd < 0) bEnd = -1;
+      uint8_t mx = 0, av = 0;
+      for (int s = a; s > bEnd; --s) {
+        if (s >= n) continue;
+        int i = (d->head - 1 - s + ExpoData::HIST * 2) % ExpoData::HIST;
+        if (d->now[i] > mx) mx = d->now[i];
+        av = d->avg[i];
+      }
+      if (!mx) { px = -1; continue; }
+      double p = expoPct(mx);
+      cv->setPenColor(p >= 100 ? RF_RED : p >= 10 ? RF_YEL : RF_BLUE);
+      cv->drawLine(gx + x, gy + gh - 1, gx + x, Y(p));
+      if (av) {
+        int y = Y(expoPct(av));
+        cv->setPenColor(T.text);
+        if (px >= 0) { cv->drawLine(px, py, gx + x, y); cv->drawLine(px, py - 1, gx + x, y - 1); }
+        px = gx + x; py = y;
+      }
+    }
+  }
+};
+
+// the band over the last second: a bar per 200 kHz channel, the strongest marked
+class ExpoBand : public uiControl {
+public:
+  ExpoData * d;
+  ExpoBand(uiWindow * p, Point pos, Size sz, ExpoData * data) : uiControl(p, pos, sz, true, 0), d(data) {
+    windowStyle().borderSize = 1; windowStyle().borderColor = T.shadow; windowStyle().activeBorderColor = T.shadow; setFocusIndex(-1);
+  }
+  void processEvent(uiEvent * e) override {
+    uiControl::processEvent(e);
+    if (e->id != UIEVT_PAINT) return;
+    Rect r = clientRect(uiOrigin::Window);
+    beginPaint(e, r);
+    auto cv = canvas();
+    cv->setBrushColor(T.win); cv->fillRectangle(r.X1, r.Y1, r.X2, r.Y2);
+    int gx = r.X1 + 52, gw = r.width() - 56, gy = r.Y1 + 4, gh = r.height() - 20;
+    const float lo = -125, hi = -15;
+    auto Y = [&](float dbm) { float v = (dbm - lo) / (hi - lo); v = v < 0 ? 0 : v > 1 ? 1 : v; return gy + gh - 1 - (int)(v * (gh - 1)); };
+    auto X = [&](int ch) { return gx + ch * gw / rf::NCH; };
+    char b[16];
+    for (float dB = -120; dB <= -20; dB += 25) {
+      int y = Y(dB); cv->setPenColor(T.face); cv->drawLine(gx, y, gx + gw - 1, y);
+      cv->setPenColor(T.text); cv->setBrushColor(T.win); snprintf(b, sizeof(b), "%d dBm", (int)dB); cv->drawText(&FONT_std_12, r.X1 + 2, y - 6, b);
+    }
+    for (int c = 0; c < rf::NCH; ++c) {
+      float v = d->band[c];
+      if (v < lo + 1) continue;
+      float t = (v - (d->noise - 3)) / 40.0f;
+      cv->setBrushColor(c == d->strongCh ? RF_RED : t < 0.15f ? T.face : rfHeat(t));
+      int x1 = X(c), x2 = imax(x1, X(c + 1) - 2);
+      cv->fillRectangle(x1, Y(v), x2, gy + gh - 1);
+    }
+    cv->setPenColor(T.text); cv->setBrushColor(T.win);
+    for (int f = 905; f <= 925; f += 5) {
+      int x = gx + (int)((f - rf::F0) / (rf::STEP * rf::NCH) * gw);
+      snprintf(b, sizeof(b), "%d", f); cv->drawText(&FONT_std_12, x - 9, gy + gh + 2, b);
+    }
+    cv->drawText(&FONT_std_12, gx + gw - 26, gy + gh + 2, "MHz");
+  }
+};
+
+void openExposureCalc();
+
 class RfExposureApp : public AppFrame {
 public:
   static AppFrame * inst;
-  uiLabel * big, * verdict, * l[7];
+  ExpoData data;
+  ExpoChart * chart; ExpoBand * bandV;
+  uiButton * runBtn, * logBtn, * spanBtn;
+  uiLabel * big, * side1, * side2, * verdict, * chartHdr, * st1, * st2;
+  double prevLin[rf::NCH]; uint32_t prevSamp[rf::NCH]; bool havePrev = false;
+  // 30-minute average: 30 one-minute buckets of summed density, plus this minute's
+  double minSum[30] = {0}; int minN[30] = {0}; int minHead = 0; double curSum = 0; int curN = 0;
+  double sesSum = 0; uint32_t sesN = 0; double sesPeak = 0; bool sesOverload = false; uint32_t sesStart = 0;
+  FILE * logF = nullptr; std::string logPath; int logLines = 0;
+
+  RfExposureApp() : AppFrame("RF Exposure  902-928 MHz (estimate)", Point(4, 4), Size(632, 452), &inst) {
+    runBtn = button("Stop", cx, cy, 64);
+    runBtn->onClick = [this]() { toggle(); };
+    button("Reset", cx + 70, cy, 60)->onClick = [this]() { resetAll(); };
+    logBtn = button("Log to CSV", cx + 136, cy, 100);
+    logBtn->onClick = [this]() { toggleLog(); };
+    spanBtn = button("10 min", cx + 242, cy, 64);
+    spanBtn->onClick = [this]() { cycleSpan(); };
+    button("Calculator", cx + 312, cy, 86)->onClick = []() { openExposureCalc(); };
+    auto hint = label("Hold the board where a person stands (head / chest height), away from your body.", cx + 406, cy, 212, 28);
+    hint->labelStyle().textFont = &FONT_std_12;
+    big = label("", cx, cy + 28, 330, 30);
+    big->labelStyle().textFont = &FONT_std_22;
+    side1 = label("", cx + 336, cy + 28, 282, 16); side1->labelStyle().textFont = &FONT_std_12;
+    side2 = label("", cx + 336, cy + 44, 282, 16); side2->labelStyle().textFont = &FONT_std_12;
+    verdict = label("", cx, cy + 62, 618, 18);
+    chartHdr = label("", cx, cy + 82, 618, 16); chartHdr->labelStyle().textFont = &FONT_std_12;
+    chart = new ExpoChart(this, Point(cx, cy + 98), Size(618, 156), &data);
+    auto h2 = label("The band over the last second: a bar per 200 kHz channel (red = strongest). Tall bars = meters sending.", cx, cy + 258, 618, 16);
+    h2->labelStyle().textFont = &FONT_std_12;
+    bandV = new ExpoBand(this, Point(cx, cy + 274), Size(618, 104), &data);
+    st1 = label("", cx, cy + 382, 618, 16); st1->labelStyle().textFont = &FONT_std_12;
+    st2 = label("", cx, cy + 398, 618, 16); st2->labelStyle().textFont = &FONT_std_12;
+    for (auto & v : data.band) v = -130;
+    sesStart = millis();
+    // this app needs the sweep: take the radio if it's idle or on the Coms mesh (not from Meter Traffic)
+    if ((rf::mode() == rf::Mode::Off || rf::mode() == rf::Mode::Mesh) && rf::wake()) rf::setMode(rf::Mode::Sweep);
+    showHdr();
+    tick();
+    startTimer(1000);
+    onTimer = [this](uiTimerHandle) { tick(); };
+  }
+  void onClosing() override { stopLog(); }
+
+  void toggle() {
+    if (!rfNeedRadio("RF Exposure")) return;
+    rf::setMode(rf::mode() == rf::Mode::Sweep ? rf::Mode::Off : rf::Mode::Sweep);
+    havePrev = false;
+    showButtons();
+  }
+  void resetAll() {
+    memset(data.now, 0, sizeof(data.now)); memset(data.avg, 0, sizeof(data.avg)); data.head = data.filled = 0;
+    memset(minSum, 0, sizeof(minSum)); memset(minN, 0, sizeof(minN)); minHead = 0; curSum = 0; curN = 0;
+    sesSum = 0; sesN = 0; sesPeak = 0; sesOverload = false; sesStart = millis(); havePrev = false;
+    chart->repaint();
+  }
+  void cycleSpan() {
+    chart->spanS = chart->spanS == 120 ? 600 : chart->spanS == 600 ? 1800 : 120;
+    spanBtn->setText(chart->spanS == 120 ? "2 min" : chart->spanS == 600 ? "10 min" : "30 min");
+    spanBtn->repaint(); showHdr(); chart->repaint();
+  }
+  void showHdr() {
+    char b[200];
+    snprintf(b, sizeof(b), "Exposure, last %s: blue = each second (yellow over 10%%), black = the FCC 30-minute average. Log scale: each line is 100x.",
+             chart->spanS == 120 ? "2 minutes" : chart->spanS == 600 ? "10 minutes" : "30 minutes");
+    chartHdr->setText(b); chartHdr->repaint();
+  }
+  void showButtons() {
+    bool on = rf::mode() == rf::Mode::Sweep;
+    runBtn->setText(on ? "Stop" : "Start");
+    runBtn->buttonStyle().backgroundColor = on ? T.accent : T.face;
+    runBtn->buttonStyle().textColor = on ? T.accentText : T.text;
+    runBtn->repaint();
+    logBtn->setText(logF ? "Stop log" : "Log to CSV");
+    logBtn->buttonStyle().backgroundColor = logF ? RF_RED : T.face;
+    logBtn->buttonStyle().textColor = logF ? RGB888(255, 255, 255) : T.text;
+    logBtn->repaint();
+  }
+  void toggleLog() {
+    if (logF) { std::string p = logPath; stopLog(); rfSavedNote(this, "RF Exposure", p); showButtons(); return; }
+    logPath = rfDir() + "/exposure-" + rfStamp() + ".csv";
+    logF = fopen(logPath.c_str(), "w");
+    if (!logF) { gApp->messageBox("RF Exposure", "Couldn't make the log file.", "OK", nullptr, nullptr, uiMessageBoxIcon::Warning); return; }
+    fprintf(logF, "# RF exposure log, 902-928 MHz, one line a second. Antenna %.1f dBi, attenuator %.1f dB, front-end %.1f dB. Estimate, not a calibrated meter.\n",
+            rf::gSettings.antGainDbi, rf::gSettings.attenDb, rf::gSettings.frontEndDb);
+    fprintf(logF, "time,seconds,mw_per_cm2,pct_public_limit,avg30_pct,strongest_mhz,strongest_dbm,noise_dbm,overload\n");
+    logLines = 0;
+    rfSavedNote(this, "RF Exposure", logPath, "logging to");
+    showButtons();
+  }
+  void stopLog() { if (logF) { fclose(logF); logF = nullptr; } }
+
+  void tick() {
+    showButtons();
+    if (!rf::gSpec) { big->setText("No radio"); big->repaint(); verdict->setText(rf::lastError()); verdict->repaint(); return; }
+    if (rf::mode() != rf::Mode::Sweep) {
+      havePrev = false;
+      verdict->setText(rf::mode() == rf::Mode::Listen ? "The radio is on one channel (Meter Traffic). Press Start to measure the whole band again."
+                                                       : "Stopped. Press Start to measure.");
+      verdict->labelStyle().textColor = T.text; verdict->repaint();
+      return;
+    }
+    double lin[rf::NCH]; uint32_t sm[rf::NCH]; bool over; float nf;
+    {
+      std::lock_guard<std::mutex> lk(rf::gMx);
+      memcpy(lin, rf::gSpec->linSum, sizeof(lin)); memcpy(sm, rf::gSpec->samples, sizeof(sm));
+      over = rf::gSpec->overload; nf = rf::gSpec->noiseFloor;
+    }
+    bool restart = !havePrev;
+    for (int c = 0; c < rf::NCH && !restart; ++c) if (sm[c] < prevSamp[c]) restart = true;   // reset in RF Sweep
+    if (restart) { memcpy(prevLin, lin, sizeof(lin)); memcpy(prevSamp, sm, sizeof(sm)); havePrev = true; return; }
+    double S = 0, strongMw = 0; int strongCh = -1, got = 0;
+    for (int c = 0; c < rf::NCH; ++c) {
+      uint32_t n = sm[c] - prevSamp[c];
+      if (!n) { data.band[c] = -130; continue; }
+      double mw = (lin[c] - prevLin[c]) / n;
+      if (mw <= 0) { data.band[c] = -130; continue; }
+      float dbm = 10 * log10(mw);
+      data.band[c] = dbm; ++got;
+      S += rf::powerDensity(dbm, rf::gSettings.antGainDbi, rf::chFreq(c));
+      if (mw > strongMw) { strongMw = mw; strongCh = c; }
+    }
+    memcpy(prevLin, lin, sizeof(lin)); memcpy(prevSamp, sm, sizeof(sm));
+    if (!got) return;                                   // the sweep hasn't been round yet
+    data.noise = nf; data.strongCh = strongCh;
+    double lim = rf::fccGeneral(915), pct = S / lim * 100;
+    // 30-minute average
+    curSum += S; ++curN;
+    if (curN >= 60) { minHead = (minHead + 1) % 30; minSum[minHead] = curSum; minN[minHead] = curN; curSum = 0; curN = 0; }
+    double tot = curSum; int totN = curN;
+    for (int k = 0; k < 30; ++k) { tot += minSum[k]; totN += minN[k]; }
+    double avg30 = totN ? tot / totN : 0, avgPct = avg30 / lim * 100;
+    sesSum += S; ++sesN; if (S > sesPeak) sesPeak = S; if (over) sesOverload = true;
+    data.now[data.head] = expoCode(pct); data.avg[data.head] = expoCode(avgPct);
+    data.head = (data.head + 1) % ExpoData::HIST; if (data.filled < ExpoData::HIST) ++data.filled;
+    // the readout
+    char b[220], p1[24], p2[24];
+    expoFmtPct(p1, sizeof(p1), pct);
+    snprintf(b, sizeof(b), "Now %s of the limit", p1); big->setText(b);
+    big->labelStyle().textColor = pct >= 100 ? RF_RED : T.text;
+    expoFmtPct(p1, sizeof(p1), avgPct);
+    unsigned mins = totN / 60;
+    snprintf(b, sizeof(b), "FCC 30-min average: %s  (over %u %s so far)", p1, mins ? mins : (unsigned)totN, mins ? "min" : "s"); side1->setText(b);
+    expoFmtPct(p1, sizeof(p1), sesN ? sesSum / sesN / lim * 100 : 0); expoFmtPct(p2, sizeof(p2), sesPeak / lim * 100);
+    unsigned ses = (millis() - sesStart) / 1000;
+    snprintf(b, sizeof(b), "Since Reset (%u:%02u): average %s, worst second %s", ses / 60, ses % 60, p1, p2); side2->setText(b);
+    const char * v = avgPct < 1 ? "Far below the FCC general-public limit." :
+                     avgPct < 10 ? "Below the FCC general-public limit." :
+                     avgPct < 50 ? "A noticeable share of the FCC general-public limit." :
+                                   "Getting close to the FCC general-public limit: check with a calibrated meter.";
+    snprintf(b, sizeof(b), "%s%s", v, sesOverload ? "  OVERLOAD seen: a meter was too close to read - real values are HIGHER." : "");
+    verdict->setText(b);
+    verdict->labelStyle().textColor = sesOverload || avgPct >= 50 ? RF_RED : avgPct < 10 ? RF_GREEN : T.text;
+    double strongS = strongCh >= 0 ? rf::powerDensity(data.band[strongCh], rf::gSettings.antGainDbi, rf::chFreq(strongCh)) : 0;
+    snprintf(b, sizeof(b), "Strongest: %.1f MHz at %.0f dBm (%.0f%% of what you get).  Now %.2e mW/cm2 = %.3f uW/cm2, about %.2f V/m.  Noise %.0f dBm.",
+             strongCh >= 0 ? rf::chFreq(strongCh) : 0.0f, strongCh >= 0 ? data.band[strongCh] : -130.0f, S > 0 ? strongS / S * 100 : 0, S, S * 1000, sqrt(S * 10 * 377), nf);
+    st1->setText(b);
+    snprintf(b, sizeof(b), "Antenna %.1f dBi, attenuator %.0f dB, front end %.0f dB (set in RF Sweep). Limit at 915 MHz: %.2f mW/cm2 public, %.2f occupational.",
+             rf::gSettings.antGainDbi, rf::gSettings.attenDb, rf::gSettings.frontEndDb, lim, rf::fccOccupational(915));
+    st2->setText(b);
+    if (logF) {
+      time_t t = time(nullptr); struct tm tmv; localtime_r(&t, &tmv); char ts[24]; strftime(ts, sizeof(ts), "%Y-%m-%d %H:%M:%S", &tmv);
+      fprintf(logF, "%s,%u,%.4e,%.5f,%.5f,%.1f,%.1f,%.1f,%d\n", ts, ses, S, pct, avgPct,
+              strongCh >= 0 ? rf::chFreq(strongCh) : 0.0f, strongCh >= 0 ? data.band[strongCh] : -130.0f, nf, over ? 1 : 0);
+      if (++logLines % 10 == 0) fflush(logF);
+    }
+    big->repaint(); side1->repaint(); side2->repaint(); verdict->repaint(); st1->repaint(); st2->repaint();
+    chart->repaint(); bandV->repaint();
+  }
+};
+AppFrame * RfExposureApp::inst = nullptr;
+void openRfExposure() { if (!RfExposureApp::inst) new RfExposureApp(); RfExposureApp::inst->open(); }
+
+// the old "one transmitter at a distance" calculator, now its own small window
+class ExposureCalcApp : public AppFrame {
+public:
+  static AppFrame * inst;
   uiTextEdit * pwEd, * dutyEd, * gEd, * distEd, * nEd;
   uiLabel * calc, * calc2;
-  RfExposureApp() : AppFrame("RF Exposure (estimate)", Point(40, 10), Size(560, 440), &inst) {
-    auto h = label("Measured here (since the last Reset in RF Sweep)", cx, cy, 540, 18);
-    h->labelStyle().textFont = &FONT_std_14;
-    big = label("", cx, cy + 22, 540, 26);
-    big->labelStyle().textFont = &FONT_std_22;
-    verdict = label("", cx, cy + 52, 540, 18);
-    for (int i = 0; i < 7; ++i) { l[i] = label("", cx, cy + 74 + i * 17, 540, 17); l[i]->labelStyle().textFont = &FONT_std_12; }
-    auto h2 = label("Calculator: one transmitter at a distance", cx, cy + 202, 540, 18);
+  ExposureCalcApp() : AppFrame("Exposure calculator", nextPos(560, 200), Size(560, 200), &inst) {
+    auto h2 = label("One transmitter (or several alike) at a distance, far-field formula", cx, cy, 540, 18);
     h2->labelStyle().textFont = &FONT_std_14;
-    label("Power W", cx, cy + 227, 60, 18);     pwEd = edit("1", cx + 60, cy + 224, 44);
-    label("Duty %", cx + 112, cy + 227, 48, 18); dutyEd = edit("2", cx + 160, cy + 224, 40);
-    label("Gain dBi", cx + 208, cy + 227, 56, 18); gEd = edit("2", cx + 264, cy + 224, 36);
-    label("Distance m", cx + 306, cy + 227, 72, 18); distEd = edit("1", cx + 378, cy + 224, 40);
-    label("How many", cx + 424, cy + 227, 60, 18); nEd = edit("1", cx + 486, cy + 224, 40);
-    button("Work it out", cx, cy + 252, 100)->onClick = [this]() { work(); };
-    calc = label("", cx + 108, cy + 255, 432, 18);
-    calc2 = label("", cx, cy + 278, 540, 36);
+    label("Power W", cx, cy + 27, 60, 18);     pwEd = edit("1", cx + 60, cy + 24, 44);
+    label("Duty %", cx + 112, cy + 27, 48, 18); dutyEd = edit("2", cx + 160, cy + 24, 40);
+    label("Gain dBi", cx + 208, cy + 27, 56, 18); gEd = edit("2", cx + 264, cy + 24, 36);
+    label("Distance m", cx + 306, cy + 27, 72, 18); distEd = edit("1", cx + 378, cy + 24, 40);
+    label("How many", cx + 424, cy + 27, 60, 18); nEd = edit("1", cx + 486, cy + 24, 40);
+    button("Work it out", cx, cy + 52, 100)->onClick = [this]() { work(); };
+    calc = label("", cx + 108, cy + 55, 432, 18);
+    calc2 = label("", cx, cy + 80, 540, 36);
     calc2->labelStyle().textFont = &FONT_std_12;
-    static const char * notes[] = {
-      "How it's worked out: power at the antenna / the antenna's effective area (G x wavelength^2 / 4 pi) = power density.",
-      "Limits (FCC 47 CFR 1.1310, at 915 MHz): 0.61 mW/cm^2 general public, 3.05 mW/cm^2 occupational, averaged 30 min.",
-      "It's an estimate, good to a few dB: antenna gain, the board's front-end and reflections all move it. The receiver",
-      "tops out near 0 dBm, so right beside a meter it reads LOW (you'll see OVERLOAD). For a signed-off number use a",
-      "calibrated broadband RF exposure meter. Meters and their ICMs are FCC-certified to meet these limits at 20 cm.",
-    };
-    for (int i = 0; i < 5; ++i) { auto n = label(notes[i], cx, cy + 320 + i * 16, 540, 16); n->labelStyle().textFont = &FONT_std_12; }
-    if (rf::mode() == rf::Mode::Off && rf::wake()) rf::setMode(rf::Mode::Sweep);
+    auto n = label("S = P x G / (4 pi r^2). Limits (FCC 47 CFR 1.1310, 915 MHz): 0.61 mW/cm2 public, 3.05 occupational, averaged 30 min.", cx, cy + 122, 540, 32);
+    n->labelStyle().textFont = &FONT_std_12;
     work();
-    refresh();
-    startTimer(1000);
-    onTimer = [this](uiTimerHandle) { refresh(); };
   }
   void work() {
     float pw = atof(pwEd->text()), duty = atof(dutyEd->text()), g = atof(gEd->text()), d = atof(distEd->text());
     int n = atoi(nEd->text()); if (n < 1) n = 1;
     if (d < 0.05f) d = 0.05f;
-    // far-field estimate: S = P * G / (4 pi r^2), in mW/cm^2
     double peak = pw * 1000.0 * pow(10.0, g / 10.0) / (4 * M_PI * pow(d * 100.0, 2));
     double avg = peak * duty / 100.0 * n;
     double lim = rf::fccGeneral(915);
@@ -782,48 +1076,9 @@ public:
     calc2->setText(b);
     calc->repaint(); calc2->repaint();
   }
-  void refresh() {
-    if (!rf::gSpec) { big->setText(rf::lastError()); big->repaint(); return; }
-    double avgS = 0, peakS = 0; float peakDbm = -200; int peakCh = 0; bool over; uint32_t secs, sw;
-    {
-      std::lock_guard<std::mutex> lk(rf::gMx);
-      for (int c = 0; c < rf::NCH; ++c) {
-        if (rf::gSpec->samples[c]) {
-          double mw = rf::gSpec->linSum[c] / rf::gSpec->samples[c];
-          avgS += rf::powerDensity(10 * log10(mw), rf::gSettings.antGainDbi, rf::chFreq(c));
-        }
-        if (rf::gSpec->hold[c] > peakDbm) { peakDbm = rf::gSpec->hold[c]; peakCh = c; }
-      }
-      peakS = rf::powerDensity(peakDbm, rf::gSettings.antGainDbi, rf::chFreq(peakCh));
-      over = rf::gSpec->overload; secs = (millis() - rf::gSpec->resetAt) / 1000; sw = rf::gSpec->sweeps;
-    }
-    double gen = rf::fccGeneral(915), occ = rf::fccOccupational(915);
-    char b[200];
-    snprintf(b, sizeof(b), "%.2e mW/cm^2  =  %.4f%% of the limit", avgS, avgS / gen * 100);
-    big->setText(b);
-    const char * v = avgS / gen < 0.01 ? "Far below the FCC general-public limit." :
-                     avgS / gen < 0.1  ? "Well below the FCC general-public limit." :
-                     avgS / gen < 0.5  ? "Below the FCC limit." : "Getting close to the FCC general-public limit - check with a calibrated meter.";
-    snprintf(b, sizeof(b), "%s%s", v, over ? "  OVERLOAD seen: real values are higher than shown." : "");
-    verdict->setText(b);
-    verdict->labelStyle().textColor = over ? RF_RED : T.text;
-    snprintf(b, sizeof(b), "Band average over %u s (%u sweeps): %.3e mW/cm^2 = %.4f%% public, %.5f%% occupational.", (unsigned)secs, (unsigned)sw, avgS, avgS / gen * 100, avgS / occ * 100);
-    l[0]->setText(b);
-    snprintf(b, sizeof(b), "Strongest moment: %.1f dBm at %.1f MHz = %.3e mW/cm^2 (%.3f%% of the limit, while it lasted).", peakDbm, rf::chFreq(peakCh), peakS, peakS / gen * 100);
-    l[1]->setText(b);
-    snprintf(b, sizeof(b), "Same in other units: %.3f uW/cm^2 average, %.4f W/m^2, about %.2f V/m.", avgS * 1000, avgS * 10, sqrt(avgS * 10 * 377));
-    l[2]->setText(b);
-    snprintf(b, sizeof(b), "Settings: antenna %.1f dBi, attenuator %.1f dB, front-end correction %.1f dB (change them in RF Sweep).",
-             rf::gSettings.antGainDbi, rf::gSettings.attenDb, rf::gSettings.frontEndDb);
-    l[3]->setText(b);
-    l[4]->setText(rf::mode() == rf::Mode::Sweep ? "Sweeping 902-928 MHz now. Leave it a few minutes in one spot for a steady average." : "The sweep is stopped: start it in RF Sweep to update this.");
-    l[5]->setText("Hold the board where a person would be (head / chest height), away from your body and metal.");
-    l[6]->setText("");
-    big->repaint(); verdict->repaint(); for (auto x : l) x->repaint();
-  }
 };
-AppFrame * RfExposureApp::inst = nullptr;
-void openRfExposure() { if (!RfExposureApp::inst) new RfExposureApp(); RfExposureApp::inst->open(); }
+AppFrame * ExposureCalcApp::inst = nullptr;
+void openExposureCalc() { if (!ExposureCalcApp::inst) new ExposureCalcApp(); ExposureCalcApp::inst->open(); }
 
 // ====================================================================== GPS
 class GpsApp : public AppFrame {

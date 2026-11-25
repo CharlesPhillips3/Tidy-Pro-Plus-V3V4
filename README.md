@@ -13,6 +13,21 @@ next to the V4 and V4-R8. Pick the board at the top of the flasher.
 | Heltec V4 | 16 MB / 2 MB | TidyOS Pro + The Shelf (dual boot), or either one | 7.4 MB (12.4 MB TidyOS Pro only) |
 | Heltec V4-R8 | 16 MB / 8 MB | the same as the V4 | the same |
 
+### 3.4.35: RF Exposure, made for a room full of meters
+
+* **A live reading:** big *Now x% of the limit* (the last second), the **FCC 30-minute average**, and the average and
+  worst second since **Reset**. Green / black / red as it gets closer to the general-public limit.
+* **Exposure over time:** a graph of every second (blue bars, yellow over 10%) with the 30-minute average as a black
+  line and the limit as a red line. Log scale (each grid line is 100x), so a lab at 0.01% and a meter at your ear both
+  show. **2 min / 10 min / 30 min** button.
+* **The band right now:** a bar per 200 kHz channel over the last second, the strongest in red, and how much of your
+  exposure it gives.
+* **Log to CSV:** one line a second (time, mW/cm2, % of the limit, 30-min average, strongest channel, noise, overload)
+  to the SD card's `rf` folder. It keeps logging while the window is minimised.
+* No more "since the last Reset in RF Sweep": the app starts the sweep itself, works each second from the sweep's
+  running sums (nothing between screen updates is missed), and has its own Start / Stop and Reset. The
+  "transmitter at a distance" calculator is behind the **Calculator** button.
+
 ### 3.4.31: the V3 talks over its USB port again
 
 * The V3's USB-C port goes through a CP2102 to the serial pins (UART0), not to the ESP32-S3's own USB like the V4's.
