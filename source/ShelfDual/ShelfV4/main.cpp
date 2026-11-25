@@ -943,6 +943,7 @@ void setup() {
   btBegin();                  // plain ESP32: hands Bluetooth's unused memory to the web server
   messagingBegin();
   comsBegin();
+  moveOpusOffMusic();                               // Opus songs on Music: onto their own shelf
   markMusicDirty();
   lastActivity = millis();
   xTaskCreatePinnedToCore(screenTask, "screen", 6144, nullptr, 1, nullptr, 0);

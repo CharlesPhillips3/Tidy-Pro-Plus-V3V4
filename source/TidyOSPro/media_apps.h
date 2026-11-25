@@ -557,7 +557,10 @@ std::string musicQuickToggle(bool midi)
   if (same && !s_qPaused && st == 1) { screenMedia("p"); s_qPaused = true; return "Music paused."; }
   if (same && s_qPaused && st == 0)  { screenMedia("r"); s_qPaused = false; return "Music: " + baseName(s_qPlaying); }
   if (same) { quickPlayFile(s_qPlaying); return "Music: " + baseName(s_qPlaying); }   // it isn't actually playing: start it again
-  std::string p = randomSong(mediaFolder(midi), "", midi);
+  std::string p;
+  if (!midi && gSDMounted && (esp_random() & 1)) p = randomSong(SD_MOUNT "/Opus", "", false);   // The Shelf's Music (Opus) shelf too
+  if (p.empty()) p = randomSong(mediaFolder(midi), "", midi);
+  if (p.empty() && !midi && gSDMounted) p = randomSong(SD_MOUNT "/Opus", "", false);
   if (p.empty()) return midi ? "No .mid files in the MIDI folder on the card." : "No music in the Music folder on the card.";
   quickPlayFile(p);
   return "Music: " + baseName(p);

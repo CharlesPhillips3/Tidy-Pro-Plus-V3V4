@@ -26,7 +26,12 @@ Settings is always on the desktop. With more than 24 apps the desktop's icon row
 
 The flasher writes the pieces with esptool-js. They're in `firmware/parts/` (made by `tools/parts.py`, which `build.sh` runs
 after `package.py`), and `parts.json` lists their sizes, where they go and the app list.
-Version 3.4.30. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+Version 3.4.31. Settings → Check for updates gets updates from this repo, **with or without a microSD card**.
+
+### 3.4.31 / The Shelf 1.20.0: Music (Opus) shelf
+
+* The Shelf has a new **Music (Opus)** shelf. Songs shrunk to Opus (.opus) live there and MP3s stay on Music. Uploads and shrunk songs go to the right shelf by themselves, and .opus songs already on Music move over at start-up with their plays and album art. The Shelf on computers and Pis, the standalone Heltec / ESP32 Shelf (1.20.0) and this dual-boot Shelf all have it.
+* TidyOS Pro's MP3 button picks songs from the Opus shelf too.
 
 ### 3.4.30: media controls, NEWS button, tidier music buttons
 
