@@ -13,6 +13,16 @@ next to the V4 and V4-R8. Pick the board at the top of the flasher.
 | Heltec V4 | 16 MB / 2 MB | TidyOS Pro + The Shelf (dual boot), or either one | 7.4 MB (12.4 MB TidyOS Pro only) |
 | Heltec V4-R8 | 16 MB / 8 MB | the same as the V4 | the same |
 
+### 3.4.40: update using the phone
+
+* **Settings > Update using phone** (V3 / V4): gets the update over the internet of the phone or laptop showing the
+  desktop, even when the board is on a Wi-Fi. Before it restarts it checks that the desktop page is open on a phone
+  and that the phone can reach GitHub, and says what to do if not (on the hotspot: choose **Keep phone internet**,
+  since with *Reach TidyOS* the phone has no internet while joined). Keep the page open and in front, screen on.
+* **Updates now come from this repo** (charlesphillips3.github.io/Tidy-Pro-Plus-V3V4), where the V3 / V4 builds are.
+  Boards on 3.4.39 or older still look in hardwaremack-prog/Tidy-Pro-Plus, so install 3.4.40 once from this
+  flasher; after that Check for updates and Update using phone find the new versions here.
+
 ### 3.4.38: the desktop page on phones
 
 * **3.4.39: zoomed in, one finger moves the screen:** swipe to move around, tap to click, touch-and-hold

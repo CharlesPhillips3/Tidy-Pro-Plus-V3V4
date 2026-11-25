@@ -2120,7 +2120,7 @@ public:
     shareLbl->labelStyle().textColor = T.accent;
 
     y += 48;
-    button("Save",           cx + 300, y, 136, 26)->onClick = [this]() { saveAll(); gApp->messageBox("Settings", "Saved.", "OK", nullptr, nullptr, uiMessageBoxIcon::Info); };
+    button("Save",           cx + 300, y, 136, 26)->onClick = [this]() { saveAll(); gApp->messageBox("Settings", "Saved. (Colours apply after a restart.)", "OK", nullptr, nullptr, uiMessageBoxIcon::Info); };
     button("Save + restart", cx + 450, y, 136, 26)->onClick = [this]() { saveAll(); delay(300); ESP.restart(); };
     button("Check for updates", cx, y, 150, 26)->onClick = [this]() {
       if (!updateLoaderPresent()) {
@@ -2138,7 +2138,11 @@ public:
         updateRequest();
       }
     };
+#ifdef TIDYOS_V4
+    button("Update using phone", cx + 156, y, 136, 26)->onClick = [this]() { updateViaPhone(); };
+#else
     label("Colours apply after restart.", cx + 156, y + 5, 140, 18)->labelStyle().textFont = &FONT_std_12;
+#endif
 
     startTimer(500);
     onTimer = [this](uiTimerHandle) { tick(); };
@@ -2162,6 +2166,37 @@ public:
   }
 
   void setWifiText(const char * t) { wifiLbl->setText(t); wifiLbl->repaint(); }
+
+#ifdef TIDYOS_V4
+  // Settings > Update using phone: the update comes over the internet of the phone (or laptop) showing this desktop
+  void updateViaPhone() {
+    if (!updateLoaderPresent()) { gApp->messageBox("Updates", "Install once from the web flasher to enable this.", "OK", nullptr, nullptr, uiMessageBoxIcon::Info); return; }
+    if (!screenViewer()) {
+      gApp->messageBox("Update using phone",
+        "Open this desktop on your phone first: join the board's hotspot (or the same Wi-Fi) and go to http://10.1.1.250 "
+        "(or the board's Wi-Fi address). Then press Update using phone on that page.", "OK", nullptr, nullptr, uiMessageBoxIcon::Info);
+      return;
+    }
+    gApp->showWindow(this, true);
+    int code = updatePhoneCheck();
+    if (code != 200) {
+      char m[420];
+      snprintf(m, sizeof(m), "Your phone couldn't reach GitHub (%d).\n\n"
+               "On the TidyOS hotspot set to Reach TidyOS, the phone has no internet while it's joined. Settings > Run TidyOS Hotspot: "
+               "turn it off and on again and choose Keep phone internet, rejoin the Wi-Fi on the phone, open http://10.1.1.250 and try again.\n\n"
+               "Otherwise check that the phone has mobile data or other internet.", code);
+      gApp->messageBox("Update using phone", m, "OK", nullptr, nullptr, uiMessageBoxIcon::Warning);
+      return;
+    }
+    if (gApp->messageBox("Update using phone",
+          "Your phone can reach GitHub. Restart and update through it?\n\n"
+          "Keep this page open and in front on the phone, with the screen on (about 3 MB: a few minutes). "
+          "If there's no newer version it just restarts.", "Update", "Cancel", nullptr, uiMessageBoxIcon::Question) == uiMessageBoxResult::Button1) {
+      saveAll();
+      updateRequestPhone();
+    }
+  }
+#endif
 
   void saveAll() {
     gSet.ssid  = ssidEd->text();

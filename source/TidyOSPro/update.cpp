@@ -118,8 +118,8 @@ static bool verifyPeer(WiFiClientSecure & c, const std::string & host)
   return false;                                 // checked: the caller connects again with a fresh client
 }
 
-#define UPD_HOST "hardwaremack-prog.github.io"
-#define UPD_BASE "/Tidy-Pro-Plus/"
+#define UPD_HOST "charlesphillips3.github.io"   // the Tidy-Pro-Plus-V3V4 repo's pages (where the V3 / V4 builds are)
+#define UPD_BASE "/Tidy-Pro-Plus-V3V4/"
 #if defined(TIDYOS_V3)
   #define UPD_MANIFEST "manifest-pro-v3.json"
 #elif defined(TIDYOS_V4) && CONFIG_SPIRAM_MODE_OCT
@@ -170,6 +170,32 @@ bool updateRestoreColors()
   }
   p.end();
   return had;
+}
+
+// "Update using phone" (Settings): restart and get the update through the web page on the phone, even with Wi-Fi
+void updateRequestPhone()
+{
+  Preferences p;
+  if (p.begin("tidyupd", false)) { p.putBool("phone", true); p.end(); }
+  updateRequest();
+}
+static bool takePhoneFlag()
+{
+  Preferences p;
+  if (!p.begin("tidyupd", false)) return false;
+  bool v = p.getBool("phone", false);
+  if (v) p.putBool("phone", false);
+  p.end();
+  return v;
+}
+// before restarting for it: can the phone showing the desktop reach GitHub? 200 = yes; else its HTTP code or < 0
+int updatePhoneCheck()
+{
+  if (!screenViewer()) return -20;
+  size_t got = 0;
+  int code = screenRelayGet((std::string("https://") + UPD_HOST + UPD_BASE + UPD_MANIFEST).c_str(),
+                            [&](const uint8_t *, size_t n, size_t) { got += n; return true; });
+  return code == 200 && got ? 200 : code;
 }
 
 bool updateModeRequested()
@@ -323,9 +349,12 @@ void updateRun(void (*status)(const char * msg, int percent))
   if (!updateLoaderPresent())
     finish(status, "Install once from the web flasher to enable updates", 0, 6000);
 
-  status("Joining Wi-Fi...", 5);
-  uint32_t t0 = millis();
-  while (WiFi.status() != WL_CONNECTED && !(gSet.ssid.length() == 0 && screenViewer()) && millis() - t0 < 30000) delay(200);
+  bool phone = takePhoneFlag();                   // "Update using phone": straight to the browser
+  if (!phone) {
+    status("Joining Wi-Fi...", 5);
+    uint32_t t0 = millis();
+    while (WiFi.status() != WL_CONNECTED && !(gSet.ssid.length() == 0 && screenViewer()) && millis() - t0 < 30000) delay(200);
+  }
   // No internet of its own (only its hotspot: at work, in the car): the web page showing TidyOS fetches
   // the update over that phone's or laptop's internet and passes it on. (The download is checked the same way.)
   bool viaBrowser = false;
@@ -342,7 +371,9 @@ void updateRun(void (*status)(const char * msg, int percent))
     if (viaBrowser) return screenRelayGet((std::string("https://") + UPD_HOST + path).c_str(), sink);
     return httpsGet(UPD_HOST, path, sink);
   };
-  if (WiFi.status() != WL_CONNECTED && !useBrowser())
+  if (phone && !useBrowser())
+    finish(status, "The phone's TidyOS page didn't come back - open http://10.1.1.250 on it and try again", 0, 8000);
+  if (!viaBrowser && WiFi.status() != WL_CONNECTED && !useBrowser())
     finish(status, "No internet - join Wi-Fi in Settings, or open TidyOS in a browser that has internet", 0, 8000);
 
   status(viaBrowser ? "Checking GitHub for a new version (through your browser)..." : "Checking GitHub for a new version...", 10);
