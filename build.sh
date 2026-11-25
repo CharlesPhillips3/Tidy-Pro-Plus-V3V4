@@ -28,16 +28,18 @@ cp source/TidyOSPro/partitions.csv source/TidyBoot/partitions.csv
 cp source/TidyOSPro/partitions.csv source/ShelfDual/ShelfV4/partitions.csv
 
 for v in ${ONLY:-v4 r8 v3}; do
-  psram=enabled; sfx=""; flash=16M; xf=""; SK=source/TidyOSPro; BK=source/TidyBoot
+  psram=enabled; sfx=""; flash=16M; xf=""; SK=source/TidyOSPro; BK=source/TidyBoot; usb="USBMode=hwcdc,CDCOnBoot=cdc"
   [ $v = r8 ] && psram=opi && sfx=r8
   if [ $v = v3 ]; then                       # Heltec V3: 8 MB flash, no PSRAM, its own partition table
-    psram=disabled; sfx=v3; flash=8M; xf="-DTIDYOS_V3"
+    # its USB-C goes through a CP2102 to UART0 (GPIO 43/44), not to the S3's own USB: Serial must be UART0,
+    # or the console, Files over USB and the flasher's board checks hear nothing
+    psram=disabled; sfx=v3; flash=8M; xf="-DTIDYOS_V3"; usb="USBMode=hwcdc,CDCOnBoot=default"
     rm -rf "$B/src-v3"; mkdir -p "$B/src-v3"; cp -a source/TidyOSPro source/TidyBoot "$B/src-v3/"
     cp source/TidyOSPro/partitions-v3.csv "$B/src-v3/TidyOSPro/partitions.csv"
     cp source/TidyOSPro/partitions-v3.csv "$B/src-v3/TidyBoot/partitions.csv"
     SK="$B/src-v3/TidyOSPro"; BK="$B/src-v3/TidyBoot"
   fi
-  F="espressif:esp32:esp32s3:FlashSize=$flash,FlashMode=qio,PSRAM=$psram,USBMode=hwcdc,CDCOnBoot=cdc,CPUFreq=240"
+  F="espressif:esp32:esp32s3:FlashSize=$flash,FlashMode=qio,PSRAM=$psram,$usb,CPUFreq=240"
   arduino-cli compile --fqbn "$F" ${TP[@]+"${TP[@]}"} --library "$PWD/libraries/FabGL" \
     --build-property "compiler.cpp.extra_flags=-DTIDYOS_HTML5 $xf" \
     --build-property "compiler.c.elf.extra_flags=-Wl,--wrap=ff_disk_read -Wl,--wrap=ff_disk_write -Wl,--wrap=esp_panic_handler" \

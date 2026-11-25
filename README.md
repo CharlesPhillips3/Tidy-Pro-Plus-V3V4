@@ -13,6 +13,13 @@ next to the V4 and V4-R8. Pick the board at the top of the flasher.
 | Heltec V4 | 16 MB / 2 MB | TidyOS Pro + The Shelf (dual boot), or either one | 7.4 MB (12.4 MB TidyOS Pro only) |
 | Heltec V4-R8 | 16 MB / 8 MB | the same as the V4 | the same |
 
+### 3.4.31: the V3 talks over its USB port again
+
+* The V3's USB-C port goes through a CP2102 to the serial pins (UART0), not to the ESP32-S3's own USB like the V4's.
+  3.4.29 and 3.4.30 for the V3 were built with the V4's USB setting, so TidyOS's console, **Files over USB** and the
+  flasher's board checks heard nothing from a V3. Now `Serial` is UART0 on the V3 (`CDCOnBoot=default` in `build.sh`).
+* If a V3 won't go into the flasher: unplug it, hold **PRG**, plug it in, let go, then Install. Press **RST** after.
+
 ### 3.4.30: a hotspot Windows and phones can use
 
 * **10.1.1.250 opens on Windows, iPhone and Android.** Before, the hotspot gave out no gateway and no DNS, so devices
